@@ -202,10 +202,14 @@ export default function App() {
 
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
+      const dpr = window.devicePixelRatio || 1;
+      const nextW = Math.max(1, Math.floor(w * dpr));
+      const nextH = Math.max(1, Math.floor(h * dpr));
+      if (canvas.width !== nextW || canvas.height !== nextH) {
+        canvas.width = nextW;
+        canvas.height = nextH;
       }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = "#111";
