@@ -48,6 +48,9 @@ export default function App() {
   const tileCount = tileN * tileN;
   const canStart = files.length > 0;
 
+  const revealDurationMs = 420;
+  const lastStepRef = useRef({ index: 0, time: 0 });
+
   // reveal order per round
   const [seed, setSeed] = useState(1);
   const revealOrder = useMemo(() => makeRandomOrder(tileCount, seed), [tileCount, seed]);
@@ -119,6 +122,10 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teams.length, stepIndex, stepsTotal, files.length, isGameActive]);
 
+  useEffect(() => {
+    lastStepRef.current = { index: stepIndex, time: performance.now() };
+  }, [stepIndex]);
+
   // draw loop
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -182,8 +189,18 @@ export default function App() {
       const tileH = dh / tileN;
 
       const tilesToShow = Math.floor((stepIndex / stepsTotal) * tileCount);
+      const prevTiles = Math.floor((Math.max(stepIndex - 1, 0) / stepsTotal) * tileCount);
+      const incomingTiles = Math.max(tilesToShow - prevTiles, 0);
+      const { time: lastStepTime } = lastStepRef.current;
+      const stepProgress = clamp((performance.now() - lastStepTime) / revealDurationMs, 0, 1);
+      const easedProgress = 1 - (1 - stepProgress) ** 3;
 
-      for (let i = 0; i < tilesToShow; i++) {
+      const randForTile = (idx) => {
+        const x = Math.sin((idx + seed * 131) * 12.9898) * 43758.5453;
+        return x - Math.floor(x);
+      };
+
+      for (let i = 0; i < prevTiles; i++) {
         const idx = revealOrder[i];
         const tx = idx % tileN;
         const ty = Math.floor(idx / tileN);
@@ -192,12 +209,54 @@ export default function App() {
         ctx.rect(x0, y0, tileW + 0.5, tileH + 0.5);
       }
 
+      const popScale = lerp(0.25, 1.08, easedProgress);
+      const rotScale = lerp(0.18, 0, easedProgress);
+
+      for (let i = prevTiles; i < tilesToShow; i++) {
+        const idx = revealOrder[i];
+        const tx = idx % tileN;
+        const ty = Math.floor(idx / tileN);
+        const x0 = dx + tx * tileW;
+        const y0 = dy + ty * tileH;
+        const cx = x0 + tileW / 2;
+        const cy = y0 + tileH / 2;
+        const r = randForTile(idx);
+        const scale = popScale * (0.9 + r * 0.2);
+        const rot = (r - 0.5) * rotScale;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(rot);
+        ctx.rect(-tileW * scale * 0.5, -tileH * scale * 0.5, tileW * scale, tileH * scale);
+        ctx.restore();
+      }
+
       ctx.clip();
 
       // Upscale (nearest)
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(off, dx, dy, dw, dh);
       ctx.restore();
+
+      if (incomingTiles > 0 && stepProgress < 1) {
+        const glowAlpha = 0.45 * (1 - easedProgress);
+        const glowScale = lerp(1.6, 1.0, easedProgress);
+        ctx.save();
+        ctx.globalCompositeOperation = "screen";
+        ctx.fillStyle = `rgba(120, 220, 255, ${glowAlpha})`;
+
+        for (let i = prevTiles; i < tilesToShow; i++) {
+          const idx = revealOrder[i];
+          const tx = idx % tileN;
+          const ty = Math.floor(idx / tileN);
+          const x0 = dx + tx * tileW;
+          const y0 = dy + ty * tileH;
+          const expandX = (tileW * glowScale - tileW) / 2;
+          const expandY = (tileH * glowScale - tileH) / 2;
+          ctx.fillRect(x0 - expandX, y0 - expandY, tileW * glowScale, tileH * glowScale);
+        }
+        ctx.restore();
+      }
 
       // HUD
       if (showHud) {
@@ -214,7 +273,7 @@ export default function App() {
 
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [img, tileN, tileCount, revealOrder, stepIndex, stepsTotal, disturb, showHud]);
+  }, [img, tileN, tileCount, revealOrder, stepIndex, stepsTotal, disturb, showHud, seed]);
 
   const onPickFiles = (e) => {
     const picked = Array.from(e.target.files || []);
