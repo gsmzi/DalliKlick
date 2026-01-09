@@ -3,6 +3,16 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 
+const addRoundedRectPath = (ctx, x, y, w, h, r) => {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+};
+
 // Reveal order helper (grid tiles random)
 function makeRandomOrder(tileCount, seed = 1) {
   // simple deterministic RNG (LCG)
@@ -206,7 +216,8 @@ export default function App() {
         const ty = Math.floor(idx / tileN);
         const x0 = dx + tx * tileW;
         const y0 = dy + ty * tileH;
-        ctx.rect(x0, y0, tileW + 0.5, tileH + 0.5);
+        const r = lerp(4, Math.min(tileW, tileH) * 0.3, randForTile(idx));
+        addRoundedRectPath(ctx, x0, y0, tileW + 0.5, tileH + 0.5, r);
       }
 
       const popScale = lerp(0.25, 1.08, easedProgress);
@@ -220,14 +231,17 @@ export default function App() {
         const y0 = dy + ty * tileH;
         const cx = x0 + tileW / 2;
         const cy = y0 + tileH / 2;
-        const r = randForTile(idx);
-        const scale = popScale * (0.9 + r * 0.2);
-        const rot = (r - 0.5) * rotScale;
+        const rand = randForTile(idx);
+        const scale = popScale * (0.9 + rand * 0.2);
+        const rot = (rand - 0.5) * rotScale;
 
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(rot);
-        ctx.rect(-tileW * scale * 0.5, -tileH * scale * 0.5, tileW * scale, tileH * scale);
+        const w = tileW * scale;
+        const h = tileH * scale;
+        const r = lerp(6, Math.min(w, h) * 0.35, rand);
+        addRoundedRectPath(ctx, -w * 0.5, -h * 0.5, w, h, r);
         ctx.restore();
       }
 
@@ -253,7 +267,12 @@ export default function App() {
           const y0 = dy + ty * tileH;
           const expandX = (tileW * glowScale - tileW) / 2;
           const expandY = (tileH * glowScale - tileH) / 2;
-          ctx.fillRect(x0 - expandX, y0 - expandY, tileW * glowScale, tileH * glowScale);
+          const w = tileW * glowScale;
+          const h = tileH * glowScale;
+          const r = lerp(6, Math.min(w, h) * 0.35, randForTile(idx));
+          ctx.beginPath();
+          addRoundedRectPath(ctx, x0 - expandX, y0 - expandY, w, h, r);
+          ctx.fill();
         }
         ctx.restore();
       }
