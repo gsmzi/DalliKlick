@@ -5,9 +5,38 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>dalliklick</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #0f0f0f;
+        color: #f5f5f5;
+      }
+      #root {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .fallback {
+        max-width: 720px;
+        text-align: center;
+        line-height: 1.5;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="fallback">
+        <h1>Dalli Klick Modern</h1>
+        <p>
+          Diese App benötigt einen lokalen Dev-Server, damit die Module geladen werden
+          können. Starte sie mit <code>npm install</code> und <code>npm run dev</code>,
+          oder baue sie mit <code>npm run build</code> und öffne die Dateien im
+          <code>dist</code>-Ordner.
+        </p>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
