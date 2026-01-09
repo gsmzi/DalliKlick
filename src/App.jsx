@@ -31,6 +31,7 @@ export default function App() {
   const [files, setFiles] = useState([]); // {name, url}
   const [current, setCurrent] = useState(0);
   const [img, setImg] = useState(null);
+  const [isGameActive, setIsGameActive] = useState(false);
 
   const [teams, setTeams] = useState([
     { name: "A", score: 0 },
@@ -45,6 +46,7 @@ export default function App() {
   const [showHud, setShowHud] = useState(true);
 
   const tileCount = tileN * tileN;
+  const canStart = files.length > 0;
 
   // reveal order per round
   const [seed, setSeed] = useState(1);
@@ -93,6 +95,7 @@ export default function App() {
   // keyboard controls
   useEffect(() => {
     const onKey = (e) => {
+      if (!isGameActive) return;
       if (e.key === " " || e.code === "Space") {
         e.preventDefault();
         nextStep();
@@ -114,7 +117,7 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teams.length, stepIndex, stepsTotal, files.length]);
+  }, [teams.length, stepIndex, stepsTotal, files.length, isGameActive]);
 
   // draw loop
   useEffect(() => {
@@ -229,6 +232,154 @@ export default function App() {
   };
   const resetScores = () => setTeams((t) => t.map((x) => ({ ...x, score: 0 })));
 
+  if (!isGameActive) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          background: "#0b0b0b",
+          color: "#fff",
+        }}
+      >
+        <header
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            padding: 16,
+            background: "#0f0f0f",
+            borderBottom: "1px solid #222",
+          }}
+        >
+          <strong>Dalli Klick Modern</strong>
+          <span style={{ color: "#aaa" }}>Startbildschirm</span>
+        </header>
+        <main
+          style={{
+            flex: 1,
+            display: "grid",
+            placeItems: "center",
+            padding: 24,
+          }}
+        >
+          <div
+            style={{
+              width: "min(900px, 100%)",
+              background: "#111",
+              border: "1px solid #222",
+              borderRadius: 16,
+              padding: 24,
+              display: "grid",
+              gap: 20,
+            }}
+          >
+            <div>
+              <h1 style={{ margin: 0, fontSize: 26 }}>Spiel vorbereiten</h1>
+              <p style={{ margin: "8px 0 0", color: "#bbb" }}>
+                Lade zuerst die Bilder und lege die Spielregeln fest. Danach startest du den
+                Spielmodus.
+              </p>
+            </div>
+
+            <section style={{ display: "grid", gap: 12 }}>
+              <strong>Bilder</strong>
+              <input type="file" accept="image/*" multiple onChange={onPickFiles} />
+              <span style={{ color: "#bbb" }}>
+                {files.length ? `${files.length} Bilder geladen.` : "Noch keine Bilder ausgewählt."}
+              </span>
+            </section>
+
+            <section style={{ display: "grid", gap: 12 }}>
+              <strong>Konfiguration</strong>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                Störgrad
+                <input
+                  type="range"
+                  min="0"
+                  max="10"
+                  value={disturb}
+                  onChange={(e) => setDisturb(parseInt(e.target.value, 10))}
+                />
+                {disturb}
+              </label>
+
+              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                Grid
+                <input
+                  type="number"
+                  min="6"
+                  max="40"
+                  value={tileN}
+                  onChange={(e) =>
+                    setTileN(clamp(parseInt(e.target.value || "18", 10), 6, 40))
+                  }
+                  style={{ width: 80 }}
+                />
+              </label>
+
+              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                Steps
+                <input
+                  type="number"
+                  min="5"
+                  max="80"
+                  value={stepsTotal}
+                  onChange={(e) =>
+                    setStepsTotal(clamp(parseInt(e.target.value || "20", 10), 5, 80))
+                  }
+                  style={{ width: 80 }}
+                />
+              </label>
+
+              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                HUD
+                <input
+                  type="checkbox"
+                  checked={showHud}
+                  onChange={(e) => setShowHud(e.target.checked)}
+                />
+              </label>
+            </section>
+
+            <section style={{ display: "grid", gap: 12 }}>
+              <strong>Teams</strong>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button onClick={addTeam}>+ Team</button>
+                <button onClick={resetScores}>Punkte löschen</button>
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {teams.map((t) => (
+                  <div
+                    key={t.name}
+                    style={{
+                      padding: "8px 12px",
+                      background: "#151515",
+                      borderRadius: 8,
+                    }}
+                  >
+                    <b>{t.name}</b>: {t.score}
+                  </div>
+                ))}
+              </div>
+              <span style={{ color: "#888" }}>
+                Punkte werden im Spielmodus vergeben (Taste A/B/…).
+              </span>
+            </section>
+
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <button onClick={() => setIsGameActive(true)} disabled={!canStart}>
+                Spiel starten
+              </button>
+              {!canStart && <span style={{ color: "#888" }}>Bitte erst Bilder laden.</span>}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div style={{ height: "100vh", display: "grid", gridTemplateRows: "auto 1fr" }}>
       <header
@@ -245,56 +396,10 @@ export default function App() {
       >
         <strong>Dalli Klick Modern</strong>
 
-        <input type="file" accept="image/*" multiple onChange={onPickFiles} />
-
         <button onClick={prevStep}>◀ Schritt</button>
         <button onClick={nextStep}>Schritt ▶ (Space)</button>
         <button onClick={nextImage}>Nächstes Bild (N)</button>
         <button onClick={resetRound}>Runde reset (R)</button>
-
-        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          Störgrad
-          <input
-            type="range"
-            min="0"
-            max="10"
-            value={disturb}
-            onChange={(e) => setDisturb(parseInt(e.target.value, 10))}
-          />
-          {disturb}
-        </label>
-
-        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          Grid
-          <input
-            type="number"
-            min="6"
-            max="40"
-            value={tileN}
-            onChange={(e) => setTileN(clamp(parseInt(e.target.value || "18", 10), 6, 40))}
-            style={{ width: 70 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          Steps
-          <input
-            type="number"
-            min="5"
-            max="80"
-            value={stepsTotal}
-            onChange={(e) => setStepsTotal(clamp(parseInt(e.target.value || "20", 10), 5, 80))}
-            style={{ width: 70 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          HUD
-          <input type="checkbox" checked={showHud} onChange={(e) => setShowHud(e.target.checked)} />
-        </label>
-
-        <button onClick={addTeam}>+ Team</button>
-        <button onClick={resetScores}>Punkte löschen</button>
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
           {teams.map((t, i) => (
