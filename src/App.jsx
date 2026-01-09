@@ -27,6 +27,42 @@ function makeRandomOrder(tileCount, seed = 1) {
   return arr;
 }
 
+function makeSpiralOrder(tileN, direction = "outside-in", seed = 1) {
+  const order = [];
+  let top = 0;
+  let bottom = tileN - 1;
+  let left = 0;
+  let right = tileN - 1;
+
+  while (top <= bottom && left <= right) {
+    for (let x = left; x <= right; x++) order.push(top * tileN + x);
+    for (let y = top + 1; y <= bottom; y++) order.push(y * tileN + right);
+    if (top < bottom) {
+      for (let x = right - 1; x >= left; x--) order.push(bottom * tileN + x);
+    }
+    if (left < right) {
+      for (let y = bottom - 1; y > top; y--) order.push(y * tileN + left);
+    }
+    top += 1;
+    bottom -= 1;
+    left += 1;
+    right -= 1;
+  }
+
+  const baseOrder = direction === "inside-out" ? order.slice().reverse() : order;
+  const rotation = baseOrder.length ? seed % baseOrder.length : 0;
+  return baseOrder.slice(rotation).concat(baseOrder.slice(0, rotation));
+}
+
+function makeSegmentOrder(segments, seed = 1) {
+  return makeRandomOrder(segments, seed);
+}
+
+function createRng(seed = 1) {
+  let s = seed >>> 0;
+  return () => (s = (1664525 * s + 1013904223) >>> 0) / 2 ** 32;
+}
+
 function pointsForStep(stepIndex, stepsTotal, maxPoints = 20) {
   // early = more points
   const t = stepIndex / Math.max(stepsTotal - 1, 1);
@@ -50,9 +86,12 @@ export default function App() {
 
   // settings
   const [tileN, setTileN] = useState(18); // grid size per axis
+  const [revealMode, setRevealMode] = useState("GRID_RANDOM");
+  const [spiralDirection, setSpiralDirection] = useState("outside-in");
+  const [wedgeSegments, setWedgeSegments] = useState(18);
   const [stepsTotal, setStepsTotal] = useState(20);
   const [stepIndex, setStepIndex] = useState(0);
-  const [disturb, setDisturb] = useState(6); // 0..10 pixelation strength
+  const [disturb, setDisturb] = useState(10); // 0..10 pixelation strength
   const [showHud, setShowHud] = useState(true);
 
   const tileCount = tileN * tileN;
@@ -63,7 +102,16 @@ export default function App() {
 
   // reveal order per round
   const [seed, setSeed] = useState(1);
-  const revealOrder = useMemo(() => makeRandomOrder(tileCount, seed), [tileCount, seed]);
+  const revealOrder = useMemo(() => {
+    if (revealMode === "SPIRAL_GRID") {
+      return makeSpiralOrder(tileN, spiralDirection, seed);
+    }
+    return makeRandomOrder(tileCount, seed);
+  }, [tileN, tileCount, revealMode, spiralDirection, seed]);
+  const wedgeOrder = useMemo(
+    () => makeSegmentOrder(wedgeSegments, seed),
+    [wedgeSegments, seed]
+  );
 
   // load image when current changes
   useEffect(() => {
@@ -179,8 +227,10 @@ export default function App() {
       const dx = Math.round((w - dw) / 2);
       const dy = Math.round((h - dh) / 2);
 
-      // Pixelation: render downscaled then upscale nearest-neighbor
       const t = clamp(disturb / 10, 0, 1);
+      const revealProgress = clamp(stepIndex / stepsTotal, 0, 1);
+
+      // Pixelation: render downscaled then upscale nearest-neighbor
       const pixelScale = lerp(1.0, 0.05, t); // 1.0 -> sharp, 0.05 -> very pixelated
       const pw = Math.max(1, Math.floor(dw * pixelScale));
       const ph = Math.max(1, Math.floor(dh * pixelScale));
@@ -193,10 +243,8 @@ export default function App() {
       offCtx.drawImage(img, 0, 0, pw, ph);
 
       ctx.save();
-      // Reveal mask (grid tiles)
+      // Reveal mask (mode-specific)
       ctx.beginPath();
-      const tileW = dw / tileN;
-      const tileH = dh / tileN;
 
       const tilesToShow = Math.floor((stepIndex / stepsTotal) * tileCount);
       const prevTiles = Math.floor((Math.max(stepIndex - 1, 0) / stepsTotal) * tileCount);
@@ -210,54 +258,59 @@ export default function App() {
         return x - Math.floor(x);
       };
 
-      for (let i = 0; i < prevTiles; i++) {
-        const idx = revealOrder[i];
-        const tx = idx % tileN;
-        const ty = Math.floor(idx / tileN);
-        const x0 = dx + tx * tileW;
-        const y0 = dy + ty * tileH;
-        const r = lerp(4, Math.min(tileW, tileH) * 0.3, randForTile(idx));
-        addRoundedRectPath(ctx, x0, y0, tileW + 0.5, tileH + 0.5, r);
-      }
+      if (revealMode === "WEDGES_RADIAL") {
+        const segmentsToShow = Math.floor((stepIndex / stepsTotal) * wedgeSegments);
+        const prevSegments = Math.floor((Math.max(stepIndex - 1, 0) / stepsTotal) * wedgeSegments);
+        const incomingSegments = Math.max(segmentsToShow - prevSegments, 0);
+        const revealSegments = Math.max(segmentsToShow, 0);
+        const centerX = dx + dw / 2;
+        const centerY = dy + dh / 2;
+        const radius = Math.max(dw, dh) * 0.6;
+        const baseRng = createRng(seed * 173 + wedgeSegments);
+        const angleOffset = baseRng() * Math.PI * 2;
+        const segmentAngle = (Math.PI * 2) / wedgeSegments;
 
-      const popScale = lerp(0.25, 1.08, easedProgress);
-      const rotScale = lerp(0.18, 0, easedProgress);
+        for (let i = 0; i < revealSegments; i++) {
+          const segIdx = wedgeOrder[i];
+          const startAngle = angleOffset + segIdx * segmentAngle;
+          const endAngle = startAngle + segmentAngle;
+          ctx.moveTo(centerX, centerY);
+          ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+          ctx.closePath();
+        }
 
-      for (let i = prevTiles; i < tilesToShow; i++) {
-        const idx = revealOrder[i];
-        const tx = idx % tileN;
-        const ty = Math.floor(idx / tileN);
-        const x0 = dx + tx * tileW;
-        const y0 = dy + ty * tileH;
-        const cx = x0 + tileW / 2;
-        const cy = y0 + tileH / 2;
-        const rand = randForTile(idx);
-        const scale = popScale * (0.9 + rand * 0.2);
-        const rot = (rand - 0.5) * rotScale;
+        if (incomingSegments > 0 && stepProgress < 1) {
+          ctx.save();
+          ctx.globalCompositeOperation = "screen";
+          ctx.fillStyle = `rgba(120, 220, 255, ${0.35 * (1 - easedProgress)})`;
+          for (let i = prevSegments; i < segmentsToShow; i++) {
+            const segIdx = wedgeOrder[i];
+            const startAngle = angleOffset + segIdx * segmentAngle;
+            const endAngle = startAngle + segmentAngle;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius * 1.02, startAngle, endAngle);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      } else {
+        const tileW = dw / tileN;
+        const tileH = dh / tileN;
 
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(rot);
-        const w = tileW * scale;
-        const h = tileH * scale;
-        const r = lerp(6, Math.min(w, h) * 0.35, rand);
-        addRoundedRectPath(ctx, -w * 0.5, -h * 0.5, w, h, r);
-        ctx.restore();
-      }
+        for (let i = 0; i < prevTiles; i++) {
+          const idx = revealOrder[i];
+          const tx = idx % tileN;
+          const ty = Math.floor(idx / tileN);
+          const x0 = dx + tx * tileW;
+          const y0 = dy + ty * tileH;
+          const r = lerp(4, Math.min(tileW, tileH) * 0.3, randForTile(idx));
+          addRoundedRectPath(ctx, x0, y0, tileW + 0.5, tileH + 0.5, r);
+        }
 
-      ctx.clip();
-
-      // Upscale (nearest)
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(off, dx, dy, dw, dh);
-      ctx.restore();
-
-      if (incomingTiles > 0 && stepProgress < 1) {
-        const glowAlpha = 0.45 * (1 - easedProgress);
-        const glowScale = lerp(1.6, 1.0, easedProgress);
-        ctx.save();
-        ctx.globalCompositeOperation = "screen";
-        ctx.fillStyle = `rgba(120, 220, 255, ${glowAlpha})`;
+        const popScale = lerp(0.25, 1.08, easedProgress);
+        const rotScale = lerp(0.18, 0, easedProgress);
 
         for (let i = prevTiles; i < tilesToShow; i++) {
           const idx = revealOrder[i];
@@ -265,17 +318,61 @@ export default function App() {
           const ty = Math.floor(idx / tileN);
           const x0 = dx + tx * tileW;
           const y0 = dy + ty * tileH;
-          const expandX = (tileW * glowScale - tileW) / 2;
-          const expandY = (tileH * glowScale - tileH) / 2;
-          const w = tileW * glowScale;
-          const h = tileH * glowScale;
-          const r = lerp(6, Math.min(w, h) * 0.35, randForTile(idx));
-          ctx.beginPath();
-          addRoundedRectPath(ctx, x0 - expandX, y0 - expandY, w, h, r);
-          ctx.fill();
+          const cx = x0 + tileW / 2;
+          const cy = y0 + tileH / 2;
+          const rand = randForTile(idx);
+          const scale = popScale * (0.9 + rand * 0.2);
+          const rot = (rand - 0.5) * rotScale;
+
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(rot);
+          const w = tileW * scale;
+          const h = tileH * scale;
+          const r = lerp(6, Math.min(w, h) * 0.35, rand);
+          addRoundedRectPath(ctx, -w * 0.5, -h * 0.5, w, h, r);
+          ctx.restore();
         }
-        ctx.restore();
       }
+
+      ctx.clip();
+
+      const blurBase = lerp(0, 14, t);
+      const blurPx = blurBase * lerp(1.0, 0.2, revealProgress);
+      const canBlur = typeof ctx.filter === "string";
+
+      if (canBlur && blurPx > 0.05) {
+        ctx.filter = `blur(${blurPx.toFixed(2)}px)`;
+      }
+
+      // Upscale (nearest)
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(off, dx, dy, dw, dh);
+
+      if (canBlur) {
+        ctx.filter = "none";
+      }
+
+      // Confetti overlay (noise)
+      const noiseStrength = lerp(0.08, 0.45, t) * lerp(1, 0.2, revealProgress);
+      if (noiseStrength > 0.01) {
+        const rng = createRng(seed * 997 + stepIndex * 911);
+        const area = dw * dh;
+        const density = lerp(0.0008, 0.006, t) * lerp(1.0, 0.25, revealProgress);
+        const count = Math.floor(area * density);
+        for (let i = 0; i < count; i++) {
+          const size = lerp(2, 6, rng());
+          const x = dx + rng() * (dw - size);
+          const y = dy + rng() * (dh - size);
+          const r = Math.floor(80 + rng() * 175);
+          const g = Math.floor(80 + rng() * 175);
+          const b = Math.floor(80 + rng() * 175);
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${noiseStrength})`;
+          ctx.fillRect(x, y, size, size);
+        }
+      }
+
+      ctx.restore();
 
       // HUD
       if (showHud) {
@@ -292,7 +389,21 @@ export default function App() {
 
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [img, tileN, tileCount, revealOrder, stepIndex, stepsTotal, disturb, showHud, seed]);
+  }, [
+    img,
+    tileN,
+    tileCount,
+    revealOrder,
+    wedgeOrder,
+    revealMode,
+    spiralDirection,
+    wedgeSegments,
+    stepIndex,
+    stepsTotal,
+    disturb,
+    showHud,
+    seed,
+  ]);
 
   const onPickFiles = (e) => {
     const picked = Array.from(e.target.files || []);
@@ -372,7 +483,33 @@ export default function App() {
             <section style={{ display: "grid", gap: 12 }}>
               <strong>Konfiguration</strong>
               <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                Störgrad
+                Aufdeckmodus
+                <select
+                  value={revealMode}
+                  onChange={(e) => setRevealMode(e.target.value)}
+                  style={{ minWidth: 220 }}
+                >
+                  <option value="GRID_RANDOM">Raster zufällig (GRID_RANDOM)</option>
+                  <option value="WEDGES_RADIAL">Tortenstücke radial (WEDGES_RADIAL)</option>
+                  <option value="SPIRAL_GRID">Spirale (SPIRAL_GRID)</option>
+                </select>
+              </label>
+
+              {revealMode === "SPIRAL_GRID" && (
+                <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  Spiralrichtung
+                  <select
+                    value={spiralDirection}
+                    onChange={(e) => setSpiralDirection(e.target.value)}
+                  >
+                    <option value="outside-in">Außen → Innen</option>
+                    <option value="inside-out">Innen → Außen</option>
+                  </select>
+                </label>
+              )}
+
+              <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                Störgrad (Pixelation, Blur, Konfetti)
                 <input
                   type="range"
                   min="0"
@@ -384,7 +521,7 @@ export default function App() {
               </label>
 
               <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                Grid
+                Rastergröße (Tiles)
                 <input
                   type="number"
                   min="6"
@@ -398,7 +535,7 @@ export default function App() {
               </label>
 
               <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                Steps
+                Schritte
                 <input
                   type="number"
                   min="5"
@@ -411,8 +548,24 @@ export default function App() {
                 />
               </label>
 
+              {revealMode === "WEDGES_RADIAL" && (
+                <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  Segmente (Tortenstücke)
+                  <input
+                    type="number"
+                    min="6"
+                    max="36"
+                    value={wedgeSegments}
+                    onChange={(e) =>
+                      setWedgeSegments(clamp(parseInt(e.target.value || "18", 10), 6, 36))
+                    }
+                    style={{ width: 80 }}
+                  />
+                </label>
+              )}
+
               <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                HUD
+                HUD anzeigen
                 <input
                   type="checkbox"
                   checked={showHud}
