@@ -233,9 +233,11 @@ export default function App() {
 
       const t = clamp(disturb / 10, 0, 1);
       const revealProgress = clamp(stepIndex / stepsTotal, 0, 1);
+      const revealFade = 1 - revealProgress;
 
       // Pixelation: render downscaled then upscale nearest-neighbor
-      const pixelScale = lerp(1.0, 0.05, t); // 1.0 -> sharp, 0.05 -> very pixelated
+      const basePixelScale = lerp(1.0, 0.05, t); // 1.0 -> sharp, 0.05 -> very pixelated
+      const pixelScale = lerp(1.0, basePixelScale, revealFade);
       const pw = Math.max(1, Math.floor(dw * pixelScale));
       const ph = Math.max(1, Math.floor(dh * pixelScale));
 
@@ -342,7 +344,7 @@ export default function App() {
       ctx.clip();
 
       const blurBase = lerp(0, 14, t);
-      const blurPx = blurBase * lerp(1.0, 0.2, revealProgress);
+      const blurPx = blurBase * revealFade;
       const canBlur = typeof ctx.filter === "string";
 
       if (canBlur && blurPx > 0.05) {
@@ -358,11 +360,11 @@ export default function App() {
       }
 
       // Confetti overlay (noise)
-      const noiseStrength = lerp(0.08, 0.45, t) * lerp(1, 0.2, revealProgress);
+      const noiseStrength = lerp(0.08, 0.45, t) * revealFade;
       if (noiseStrength > 0.01) {
         const rng = createRng(seed * 997 + stepIndex * 911);
         const area = dw * dh;
-        const density = lerp(0.0008, 0.006, t) * lerp(1.0, 0.25, revealProgress);
+        const density = lerp(0.0008, 0.006, t) * revealFade;
         const count = Math.floor(area * density);
         for (let i = 0; i < count; i++) {
           const size = lerp(2, 6, rng());
