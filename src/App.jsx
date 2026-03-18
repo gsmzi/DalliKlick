@@ -148,9 +148,9 @@ export default function App() {
   const awardTeam = (teamIdx) => {
     const pts = pointsForStep(stepIndex, stepsTotal, 20);
     setTeams((t) =>
-      t.map((x, i) => (i === teamIdx ? { ...x, score: x.score + pts } : x))
+      t.map((x, i) => (i === teamIdx ? { ...x, score: x.score + pts, _lastAward: Date.now() } : x))
     );
-    nextImage();
+    setStepIndex(stepsTotal);
   };
 
   // keyboard controls
@@ -633,17 +633,35 @@ export default function App() {
       >
         <strong>Dalli Klick Modern</strong>
 
-        <button onClick={prevStep}>◀ Schritt</button>
-        <button onClick={nextStep}>Schritt ▶ (Space)</button>
-        <button onClick={nextImage}>Nächstes Bild (N)</button>
-        <button onClick={resetRound}>Runde reset (R)</button>
+        <div style={{ display: "flex", gap: 8, opacity: 0.5, flexWrap: "wrap" }}>
+          <button style={{ fontSize: "0.75rem", padding: "4px 8px" }} onClick={prevStep}>◀ Schritt</button>
+          <button style={{ fontSize: "0.75rem", padding: "4px 8px" }} onClick={nextStep}>Schritt ▶ (Space)</button>
+          <button style={{ fontSize: "0.75rem", padding: "4px 8px" }} onClick={nextImage}>Nächstes Bild (N)</button>
+          <button style={{ fontSize: "0.75rem", padding: "4px 8px" }} onClick={resetRound}>Runde reset (R)</button>
+        </div>
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
           {teams.map((t, i) => (
-            <div key={t.name} style={{ padding: "6px 10px", background: "#151515", borderRadius: 8 }}>
-              <b>{t.name}</b>: {t.score}{" "}
-              <button onClick={() => awardTeam(i)} style={{ marginLeft: 8 }}>
-                + (Taste {t.name})
+            <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", background: "#1a1a1a", border: "1px solid #333", borderRadius: 12 }}>
+              <span style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#ccc" }}>{t.name}</span>
+              <span 
+                key={t._lastAward} 
+                style={{ 
+                  fontSize: "2rem", 
+                  fontWeight: "900", 
+                  color: "#fff", 
+                  display: "inline-block",
+                  animation: t._lastAward ? "scorePop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)" : "none"
+                }}
+              >
+                {t.score}
+              </span>
+              <button 
+                onClick={() => awardTeam(i)} 
+                style={{ fontSize: "0.8rem", padding: "4px 8px", background: "#2a2a2a", border: "1px solid #444", color: "#ccc" }}
+                title={`Punkte geben (Taste ${t.name})`}
+              >
+                + Punkte
               </button>
             </div>
           ))}

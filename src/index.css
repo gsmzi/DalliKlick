@@ -66,3 +66,9 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+@keyframes scorePop {
+  0% { transform: scale(1); color: inherit; }
+  50% { transform: scale(1.5); color: #4ade80; }
+  100% { transform: scale(1); color: inherit; }
+}
