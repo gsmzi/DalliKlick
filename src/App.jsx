@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { bilderList } from "virtual:bilder-list";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -74,7 +75,12 @@ export default function App() {
   const canvasRef = useRef(null);
   const offscreenRef = useRef(null);
 
-  const [files, setFiles] = useState([]); // {name, url}
+  const [files, setFiles] = useState(() => {
+    return (bilderList || []).map(name => ({
+      name,
+      url: `/bilder/${name}`
+    }));
+  }); // {name, url}
   const [current, setCurrent] = useState(0);
   const [img, setImg] = useState(null);
   const [isGameActive, setIsGameActive] = useState(false);
