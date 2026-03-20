@@ -84,6 +84,8 @@ export default function App() {
   const [current, setCurrent] = useState(0);
   const [img, setImg] = useState(null);
   const [isGameActive, setIsGameActive] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [draggedIdx, setDraggedIdx] = useState(null);
 
   const [teams, setTeams] = useState([
     { name: "A", score: 0 },
@@ -490,6 +492,14 @@ export default function App() {
               <span style={{ color: "#bbb" }}>
                 {files.length ? `${files.length} Bilder geladen.` : "Noch keine Bilder ausgewählt."}
               </span>
+              {files.length > 0 && (
+                <button
+                  onClick={() => setShowPreviewModal(true)}
+                  style={{ width: "fit-content", fontSize: "0.9rem", marginTop: 8 }}
+                >
+                  🖼️ Bilder-Vorschau & Reihenfolge
+                </button>
+              )}
             </section>
 
             <section style={{ display: "grid", gap: 12 }}>
@@ -612,12 +622,171 @@ export default function App() {
             </section>
 
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <button onClick={() => setIsGameActive(true)} disabled={!canStart}>
+              <button 
+                onClick={() => {
+                  setCurrent(0);
+                  setStepIndex(0);
+                  setSeed((x) => x + 1);
+                  setIsGameActive(true);
+                }} 
+                disabled={!canStart}
+              >
                 Spiel starten
               </button>
               {!canStart && <span style={{ color: "#888" }}>Bitte erst Bilder laden.</span>}
             </div>
           </div>
+
+          {showPreviewModal && (
+            <div
+              style={{
+                position: "fixed",
+                top: 0, left: 0, right: 0, bottom: 0,
+                background: "rgba(0,0,0,0.85)",
+                zIndex: 100,
+                display: "grid",
+                placeItems: "center",
+                padding: 24,
+              }}
+            >
+              <div
+                style={{
+                  background: "#1a1a1a",
+                  border: "1px solid #333",
+                  borderRadius: 16,
+                  width: "min(100%, 800px)",
+                  maxHeight: "90vh",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <div
+                  style={{
+                    padding: 20,
+                    borderBottom: "1px solid #333",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 12,
+                  }}
+                >
+                  <h2 style={{ margin: 0, fontSize: "1.4rem" }}>Bilder Vorschau ({files.length})</h2>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => {
+                        setFiles((f) => [...f].sort(() => Math.random() - 0.5));
+                        setSeed((s) => s + 1);
+                      }}
+                    >
+                      🔀 Zufällige Reihenfolge
+                    </button>
+                    <button onClick={() => setShowPreviewModal(false)} style={{ background: "#444" }}>
+                      Schließen
+                    </button>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    padding: 20,
+                    overflowY: "auto",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 16,
+                    alignContent: "flex-start",
+                  }}
+                >
+                  {files.length === 0 && <p style={{ color: "#888" }}>Keine Bilder mehr vorhanden.</p>}
+                  {files.map((f, i) => (
+                    <div
+                      key={f.url}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "move";
+                        setDraggedIdx(i);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (draggedIdx === null || draggedIdx === i) return;
+                        setFiles((fs) => {
+                          const arr = [...fs];
+                          const item = arr.splice(draggedIdx, 1)[0];
+                          arr.splice(i, 0, item);
+                          return arr;
+                        });
+                        setDraggedIdx(i);
+                      }}
+                      onDragEnd={() => setDraggedIdx(null)}
+                      style={{
+                        position: "relative",
+                        width: 140,
+                        height: 140,
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        border: draggedIdx === i ? "2px dashed #646cff" : "2px solid #333",
+                        opacity: draggedIdx === i ? 0.4 : 1,
+                        cursor: "grab",
+                        background: "#111",
+                      }}
+                      title="Bild verschieben (Drag & Drop)"
+                    >
+                      <img
+                        src={f.url}
+                        alt={f.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }}
+                      />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFiles((fs) => fs.filter((_, idx) => idx !== i));
+                        }}
+                        style={{
+                          position: "absolute",
+                          top: 4,
+                          right: 4,
+                          background: "rgba(0,0,0,0.6)",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "50%",
+                          width: 24,
+                          height: 24,
+                          padding: 0,
+                          display: "grid",
+                          placeItems: "center",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          lineHeight: 1,
+                        }}
+                        title="Bild entfernen"
+                      >
+                        ✕
+                      </button>
+                      <div
+                        style={{
+                          position: "absolute",
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          background: "rgba(0,0,0,0.6)",
+                          color: "white",
+                          fontSize: "12px",
+                          padding: "4px 6px",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {i + 1}. {f.name}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding: "12px 20px", borderTop: "1px solid #333", color: "#888", fontSize: "0.9rem" }}>
+                  💡 Tipp: Du kannst die Bilder per Drag & Drop mit der Maus verschieben, um die Reihenfolge anzupassen.
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     );
