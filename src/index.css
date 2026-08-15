@@ -133,3 +133,37 @@ kbd {
 .pulse-button {
   animation: pulseGlow 2.5s infinite ease-in-out;
 }
+
+/* Print Styles */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .solution-sheet {
+    background: #fff !important;
+    color: #000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .solution-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 10px !important;
+  }
+  .solution-card {
+    border: 1px solid #ccc !important;
+    padding: 8px !important;
+    background: #f9f9f9 !important;
+    color: #000 !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    border-radius: 6px !important;
+  }
+}

@@ -1,8 +1,23 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { bilderList } from "virtual:bilder-list";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
+
+// Helper to format image names cleanly (e.g. dalli_eiffel_1773924541774.png -> Eiffel)
+export function formatImageName(name) {
+  if (!name) return "";
+  let clean = name.replace(/\.[^/.]+$/, "");
+  clean = clean.replace(/_\d{10,}$/, "");
+  clean = clean.replace(/^dalli_/i, "");
+  clean = clean.replace(/^dalli_generated_/i, "");
+  clean = clean.replace(/[_-]+/g, " ");
+  return clean
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 const addRoundedRectPath = (ctx, x, y, w, h, r) => {
   const radius = Math.min(r, w / 2, h / 2);
@@ -14,7 +29,6 @@ const addRoundedRectPath = (ctx, x, y, w, h, r) => {
   ctx.closePath();
 };
 
-// Reveal order helper (grid tiles random)
 function makeRandomOrder(tileCount, seed = 1) {
   let s = seed >>> 0;
   const rnd = () => (s = (1664525 * s + 1013904223) >>> 0) / 2 ** 32;
@@ -69,11 +83,16 @@ function pointsForStep(stepIndex, stepsTotal, maxPoints = 20) {
   return clamp(pts, 1, maxPoints);
 }
 
+const SYNC_CHANNEL = "dalliklick_sync_channel";
+
 export default function App() {
+  const isControllerWindow = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("role") === "controller";
+
   const canvasRef = useRef(null);
   const offscreenRef = useRef(null);
   const fileInputRef = useRef(null);
   const startScreenFileInputRef = useRef(null);
+  const channelRef = useRef(null);
 
   const defaultImagesCount = (bilderList || []).length;
 
@@ -90,7 +109,10 @@ export default function App() {
   const [isGameActive, setIsGameActive] = useState(false);
   const [hasStartedBefore, setHasStartedBefore] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showSolutionModal, setShowSolutionModal] = useState(false);
   const [showHelp, setShowHelp] = useState(true);
+  const [showCheatPopover, setShowCheatPopover] = useState(false);
+  const [copiedNotification, setCopiedNotification] = useState(false);
   const [draggedIdx, setDraggedIdx] = useState(null);
 
   const [teams, setTeams] = useState([
@@ -99,31 +121,34 @@ export default function App() {
   ]);
 
   // settings
-  const [tileN, setTileN] = useState(18); // grid size per axis
+  const [tileN, setTileN] = useState(18);
   const [revealMode, setRevealMode] = useState("GRID_RANDOM");
   const [spiralDirection, setSpiralDirection] = useState("outside-in");
   const [wedgeSegments, setWedgeSegments] = useState(18);
   const [stepsTotal, setStepsTotal] = useState(20);
   const [stepIndex, setStepIndex] = useState(0);
-  const [disturb, setDisturb] = useState(10); // 0..10 pixelation strength
+  const [disturb, setDisturb] = useState(10);
   const [showHud, setShowHud] = useState(true);
   const [lastAward, setLastAward] = useState(null);
+  const [seed, setSeed] = useState(1);
 
   const tileCount = tileN * tileN;
   const canStart = files.length > 0;
 
   const isUsingDefaultOnly = useMemo(() => {
-    return (
-      files.length === defaultImagesCount &&
-      files.every((f) => f.isDefault)
-    );
+    return files.length === defaultImagesCount && files.every((f) => f.isDefault);
   }, [files, defaultImagesCount]);
 
   const revealDurationMs = 420;
   const lastStepRef = useRef({ index: 0, time: 0 });
 
-  // reveal order per round
-  const [seed, setSeed] = useState(1);
+  const currentFile = files[current] || null;
+  const nextFile = files.length > 1 ? files[(current + 1) % files.length] : null;
+
+  const currentSolutionName = currentFile ? formatImageName(currentFile.name) : "";
+  const nextSolutionName = nextFile ? formatImageName(nextFile.name) : "";
+
+  // Reveal orders
   const revealOrder = useMemo(() => {
     if (revealMode === "SPIRAL_GRID") {
       return makeSpiralOrder(tileN, spiralDirection, seed);
@@ -135,6 +160,136 @@ export default function App() {
     () => makeSegmentOrder(wedgeSegments, seed),
     [wedgeSegments, seed]
   );
+
+  // BroadcastChannel Sync Setup
+  useEffect(() => {
+    if (typeof window === "undefined" || !("BroadcastChannel" in window)) return;
+    const ch = new BroadcastChannel(SYNC_CHANNEL);
+    channelRef.current = ch;
+
+    ch.onmessage = (event) => {
+      const { type, payload } = event.data || {};
+      if (!type) return;
+
+      if (type === "REQUEST_STATE") {
+        if (!isControllerWindow) {
+          ch.postMessage({
+            type: "STATE_SYNC",
+            payload: {
+              current,
+              stepIndex,
+              stepsTotal,
+              teams,
+              lastAward,
+              revealMode,
+              spiralDirection,
+              wedgeSegments,
+              disturb,
+              tileN,
+              showHud,
+              isGameActive,
+              hasStartedBefore,
+              seed,
+              files: files.map((f) => ({ name: f.name, url: f.url, isDefault: f.isDefault })),
+            },
+          });
+        }
+      } else if (type === "STATE_SYNC") {
+        if (payload) {
+          if (payload.current !== undefined) setCurrent(payload.current);
+          if (payload.stepIndex !== undefined) setStepIndex(payload.stepIndex);
+          if (payload.stepsTotal !== undefined) setStepsTotal(payload.stepsTotal);
+          if (payload.teams !== undefined) setTeams(payload.teams);
+          if (payload.lastAward !== undefined) setLastAward(payload.lastAward);
+          if (payload.revealMode !== undefined) setRevealMode(payload.revealMode);
+          if (payload.spiralDirection !== undefined) setSpiralDirection(payload.spiralDirection);
+          if (payload.wedgeSegments !== undefined) setWedgeSegments(payload.wedgeSegments);
+          if (payload.disturb !== undefined) setDisturb(payload.disturb);
+          if (payload.tileN !== undefined) setTileN(payload.tileN);
+          if (payload.showHud !== undefined) setShowHud(payload.showHud);
+          if (payload.isGameActive !== undefined) setIsGameActive(payload.isGameActive);
+          if (payload.hasStartedBefore !== undefined) setHasStartedBefore(payload.hasStartedBefore);
+          if (payload.seed !== undefined) setSeed(payload.seed);
+          if (payload.files && payload.files.length) setFiles(payload.files);
+        }
+      } else if (type === "ACTION_NEXT_STEP") {
+        setStepIndex((s) => clamp(s + 1, 0, payload?.stepsTotal ?? stepsTotal));
+      } else if (type === "ACTION_PREV_STEP") {
+        setStepIndex((s) => clamp(s - 1, 0, payload?.stepsTotal ?? stepsTotal));
+      } else if (type === "ACTION_SOLVE") {
+        setStepIndex(payload?.stepsTotal ?? stepsTotal);
+      } else if (type === "ACTION_NEXT_IMAGE") {
+        setCurrent((c) => (c + 1) % (payload?.filesLength || files.length || 1));
+        setStepIndex(0);
+        setSeed((x) => x + 1);
+        setLastAward(null);
+      } else if (type === "ACTION_RESET_ROUND") {
+        setStepIndex(0);
+        setSeed((x) => x + 1);
+        setLastAward(null);
+      } else if (type === "ACTION_SET_CURRENT") {
+        if (payload?.index !== undefined) {
+          setCurrent(payload.index);
+          setStepIndex(0);
+          setSeed((x) => x + 1);
+          setLastAward(null);
+          setHasStartedBefore(true);
+        }
+      } else if (type === "ACTION_AWARD_TEAM") {
+        const { teamIdx, pts, stepIndexBefore } = payload || {};
+        if (teamIdx !== undefined) {
+          setLastAward({ teamIdx, pts, stepIndexBefore });
+          setTeams((t) =>
+            t.map((x, i) =>
+              i === teamIdx
+                ? { ...x, score: x.score + pts, _lastAward: Date.now() }
+                : x
+            )
+          );
+          setStepIndex(payload.stepsTotal ?? stepsTotal);
+        }
+      } else if (type === "ACTION_UNDO_AWARD") {
+        if (payload?.lastAward) {
+          const la = payload.lastAward;
+          setTeams((t) =>
+            t.map((x, i) =>
+              i === la.teamIdx
+                ? { ...x, score: x.score - la.pts, _lastAward: Date.now() }
+                : x
+            )
+          );
+          setStepIndex(la.stepIndexBefore);
+          setLastAward(null);
+        }
+      } else if (type === "ACTION_SET_GAME_ACTIVE") {
+        if (payload?.isGameActive !== undefined) {
+          setIsGameActive(payload.isGameActive);
+          if (payload.isGameActive) setHasStartedBefore(true);
+        }
+      } else if (type === "ACTION_TOGGLE_FULLSCREEN") {
+        if (!isControllerWindow) {
+          const el = document.documentElement;
+          if (!document.fullscreenElement) el.requestFullscreen?.();
+          else document.exitFullscreen?.();
+        }
+      }
+    };
+
+    if (isControllerWindow) {
+      ch.postMessage({ type: "REQUEST_STATE" });
+    }
+
+    return () => {
+      ch.close();
+    };
+  }, [isControllerWindow, stepsTotal, files.length]);
+
+  // Sync state broadcast on updates from main window
+  const broadcastAction = useCallback((type, payload = {}) => {
+    if (channelRef.current) {
+      channelRef.current.postMessage({ type, payload });
+    }
+  }, []);
 
   // load image when current changes
   useEffect(() => {
@@ -157,25 +312,50 @@ export default function App() {
         }
       });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const nextStep = () => setStepIndex((s) => clamp(s + 1, 0, stepsTotal));
-  const prevStep = () => setStepIndex((s) => clamp(s - 1, 0, stepsTotal));
+  const nextStep = () => {
+    setStepIndex((s) => clamp(s + 1, 0, stepsTotal));
+    broadcastAction("ACTION_NEXT_STEP", { stepsTotal });
+  };
+
+  const prevStep = () => {
+    setStepIndex((s) => clamp(s - 1, 0, stepsTotal));
+    broadcastAction("ACTION_PREV_STEP", { stepsTotal });
+  };
+
+  const solveRound = () => {
+    setStepIndex(stepsTotal);
+    broadcastAction("ACTION_SOLVE", { stepsTotal });
+  };
+
   const resetRound = () => {
     setStepIndex(0);
     setSeed((x) => x + 1);
     setLastAward(null);
+    broadcastAction("ACTION_RESET_ROUND");
   };
+
   const nextImage = () => {
     if (!files.length) return;
     setCurrent((c) => (c + 1) % files.length);
     resetRound();
+    broadcastAction("ACTION_NEXT_IMAGE", { filesLength: files.length });
+  };
+
+  const selectImage = (idx) => {
+    setCurrent(idx);
+    setStepIndex(0);
+    setSeed((x) => x + 1);
+    setLastAward(null);
+    setHasStartedBefore(true);
+    broadcastAction("ACTION_SET_CURRENT", { index: idx });
   };
 
   const awardTeam = (teamIdx) => {
     const pts = pointsForStep(stepIndex, stepsTotal, 20);
-    setLastAward({ teamIdx, pts, stepIndexBefore: stepIndex });
+    const stepBefore = stepIndex;
+    setLastAward({ teamIdx, pts, stepIndexBefore: stepBefore });
     setTeams((t) =>
       t.map((x, i) =>
         i === teamIdx
@@ -184,25 +364,35 @@ export default function App() {
       )
     );
     setStepIndex(stepsTotal);
+    broadcastAction("ACTION_AWARD_TEAM", { teamIdx, pts, stepIndexBefore: stepBefore, stepsTotal });
   };
 
   const undoLastAward = () => {
     if (!lastAward) return;
+    const la = lastAward;
     setTeams((t) =>
       t.map((x, i) =>
-        i === lastAward.teamIdx
-          ? { ...x, score: x.score - lastAward.pts, _lastAward: Date.now() }
+        i === la.teamIdx
+          ? { ...x, score: x.score - la.pts, _lastAward: Date.now() }
           : x
       )
     );
-    setStepIndex(lastAward.stepIndexBefore);
+    setStepIndex(la.stepIndexBefore);
     setLastAward(null);
+    broadcastAction("ACTION_UNDO_AWARD", { lastAward: la });
+  };
+
+  const toggleFullscreen = () => {
+    broadcastAction("ACTION_TOGGLE_FULLSCREEN");
+    const el = document.documentElement;
+    if (!document.fullscreenElement) el.requestFullscreen?.();
+    else document.exitFullscreen?.();
   };
 
   // keyboard controls
   useEffect(() => {
     const onKey = (e) => {
-      if (!isGameActive) return;
+      if (!isGameActive && !isControllerWindow) return;
       if (e.key === " " || e.code === "Space") {
         e.preventDefault();
         nextStep();
@@ -211,11 +401,11 @@ export default function App() {
       } else if (e.key.toLowerCase() === "r") {
         resetRound();
       } else if (e.key.toLowerCase() === "f") {
-        const el = document.documentElement;
-        if (!document.fullscreenElement) el.requestFullscreen?.();
-        else document.exitFullscreen?.();
+        toggleFullscreen();
       } else if (e.key.toLowerCase() === "l") {
-        setStepIndex(stepsTotal);
+        solveRound();
+      } else if (e.key.toLowerCase() === "s") {
+        setShowCheatPopover((prev) => !prev);
       } else if (e.key.toLowerCase() === "z" && (e.ctrlKey || e.metaKey)) {
         undoLastAward();
       } else {
@@ -226,17 +416,16 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teams.length, stepIndex, stepsTotal, files.length, isGameActive, lastAward]);
+  }, [teams.length, stepIndex, stepsTotal, files.length, isGameActive, isControllerWindow, lastAward]);
 
   useEffect(() => {
     lastStepRef.current = { index: stepIndex, time: performance.now() };
   }, [stepIndex]);
 
-  // draw loop
+  // Main Canvas Rendering
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || isControllerWindow) return;
     const ctx = canvas.getContext("2d");
 
     if (!offscreenRef.current) offscreenRef.current = document.createElement("canvas");
@@ -423,11 +612,11 @@ export default function App() {
       ctx.restore();
 
       if (showHud) {
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
         ctx.strokeStyle = "rgba(255,255,255,0.15)";
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.roundRect(14, 14, 280, 92, 10);
+        ctx.roundRect(14, 14, 290, 92, 10);
         ctx.fill();
         ctx.stroke();
 
@@ -459,6 +648,7 @@ export default function App() {
     disturb,
     showHud,
     seed,
+    isControllerWindow,
   ]);
 
   const onPickFiles = (e) => {
@@ -523,10 +713,10 @@ export default function App() {
 
   const resetScores = () => setTeams((t) => t.map((x) => ({ ...x, score: 0 })));
 
-  // Resume or start new game
   const resumeGame = () => {
     setIsGameActive(true);
     setHasStartedBefore(true);
+    broadcastAction("ACTION_SET_GAME_ACTIVE", { isGameActive: true });
   };
 
   const startNewGameFromBeginning = () => {
@@ -536,6 +726,23 @@ export default function App() {
     setLastAward(null);
     setIsGameActive(true);
     setHasStartedBefore(true);
+    broadcastAction("ACTION_SET_GAME_ACTIVE", { isGameActive: true });
+    broadcastAction("ACTION_SET_CURRENT", { index: 0 });
+  };
+
+  const openControllerWindow = () => {
+    const url = window.location.origin + window.location.pathname + "?role=controller";
+    window.open(url, "dalli_controller_window", "width=1040,height=760,menubar=no,toolbar=no,location=no,status=no");
+  };
+
+  const copySolutionList = () => {
+    const text = files
+      .map((f, i) => `${i + 1}. ${formatImageName(f.name)} (${f.name})`)
+      .join("\n");
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopiedNotification(true);
+      setTimeout(() => setCopiedNotification(false), 2000);
+    });
   };
 
   const revealModeLabel =
@@ -545,7 +752,355 @@ export default function App() {
       ? "Tortenstücke (Radial)"
       : `Spirale (${spiralDirection === "outside-in" ? "Außen→Innen" : "Innen→Außen"})`;
 
-  // Start Screen
+  // ==========================================
+  // VIEW 1: PRESENTER / CONTROLLER WINDOW
+  // ==========================================
+  if (isControllerWindow) {
+    const currentPts = pointsForStep(stepIndex, stepsTotal, 20);
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          background: "#0c0e14",
+          color: "#f1f5f9",
+          padding: 16,
+          boxSizing: "border-box",
+        }}
+      >
+        {/* Presenter Top Bar */}
+        <header
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 18px",
+            background: "#131826",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            borderRadius: 12,
+            marginBottom: 16,
+            flexWrap: "wrap",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: "1.5rem" }}>🖥️</span>
+            <div>
+              <strong style={{ fontSize: "1.1rem", color: "#818cf8" }}>Spielleiter-Konsole</strong>
+              <div style={{ fontSize: "0.8rem", color: "#4ade80" }}>🟢 Verbunden mit Beamer/Hauptfenster</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button onClick={toggleFullscreen} style={{ fontSize: "0.85rem", background: "#1e293b" }}>
+              🪟 Beamer Vollbild (F)
+            </button>
+            <button
+              onClick={() => broadcastAction("REQUEST_STATE")}
+              style={{ fontSize: "0.85rem", background: "#1e293b" }}
+              title="Aktualisiert die Synchronisation"
+            >
+              🔄 Sync
+            </button>
+          </div>
+        </header>
+
+        {/* Presenter Grid Layout */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1.2fr 1fr",
+            gap: 16,
+            flex: 1,
+          }}
+        >
+          {/* Left Column: Uncensored Current Image & Big Control Actions */}
+          <div
+            style={{
+              background: "#131826",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              borderRadius: 14,
+              padding: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span style={{ fontSize: "0.85rem", color: "#94a3b8", fontWeight: 700 }}>
+                AKTUELLES BILD #{current + 1} VON {files.length}
+              </span>
+              <span style={{ fontSize: "0.95rem", color: "#4ade80", fontWeight: 800 }}>
+                {currentPts} Punkte verfügbar
+              </span>
+            </div>
+
+            {/* Unblurred Solution Banner */}
+            <div
+              style={{
+                background: "linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%)",
+                border: "2px solid #6366f1",
+                borderRadius: 12,
+                padding: 12,
+                display: "flex",
+                gap: 14,
+                alignItems: "center",
+              }}
+            >
+              <div
+                style={{
+                  width: 90,
+                  height: 90,
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  background: "#000",
+                  flexShrink: 0,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                }}
+              >
+                {currentFile && (
+                  <img
+                    src={currentFile.url}
+                    alt={currentFile.name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                )}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "0.78rem", color: "#a5b4fc", textTransform: "uppercase", fontWeight: 700 }}>
+                  Gesuchte Lösung:
+                </div>
+                <div style={{ fontSize: "1.5rem", fontWeight: 900, color: "#fff", margin: "2px 0 4px" }}>
+                  {currentSolutionName || "—"}
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "#64748b" }}>
+                  Datei: {currentFile?.name}
+                </div>
+              </div>
+            </div>
+
+            {/* Step Progress Bar */}
+            <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: 12, borderRadius: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: 6 }}>
+                <span>Aufdeck-Fortschritt:</span>
+                <strong>{stepIndex} / {stepsTotal} Schritte ({Math.round((stepIndex / stepsTotal) * 100)}%)</strong>
+              </div>
+              <div style={{ width: "100%", height: 10, background: "#1e293b", borderRadius: 5, overflow: "hidden" }}>
+                <div
+                  style={{
+                    width: `${(stepIndex / stepsTotal) * 100}%`,
+                    height: "100%",
+                    background: "linear-gradient(90deg, #6366f1, #4ade80)",
+                    transition: "width 0.2s",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Big Action Controls */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button
+                onClick={nextStep}
+                style={{
+                  gridColumn: "1 / -1",
+                  padding: "16px",
+                  background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+                  border: "none",
+                  fontSize: "1.15rem",
+                  fontWeight: 800,
+                  boxShadow: "0 4px 15px rgba(99, 102, 241, 0.4)",
+                }}
+              >
+                ⏭️ Nächster Schritt aufdecken (Space)
+              </button>
+
+              <button
+                onClick={solveRound}
+                style={{ padding: "12px", background: "#059669", borderColor: "#10b981", fontSize: "0.95rem" }}
+              >
+                💡 Sofort auflösen (L)
+              </button>
+
+              <button
+                onClick={nextImage}
+                style={{ padding: "12px", background: "#252e42", fontSize: "0.95rem" }}
+              >
+                ➡️ Nächstes Bild (N)
+              </button>
+
+              <button
+                onClick={prevStep}
+                style={{ padding: "8px", background: "#1e293b", fontSize: "0.85rem" }}
+              >
+                ◀ Schritt zurück
+              </button>
+
+              <button
+                onClick={resetRound}
+                style={{ padding: "8px", background: "#1e293b", fontSize: "0.85rem" }}
+              >
+                🔄 Runde neu starten (R)
+              </button>
+            </div>
+
+            {/* Next Image Teaser */}
+            {nextFile && (
+              <div
+                style={{
+                  marginTop: "auto",
+                  background: "rgba(15, 23, 42, 0.5)",
+                  border: "1px dashed rgba(255, 255, 255, 0.15)",
+                  borderRadius: 10,
+                  padding: 10,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <div style={{ width: 44, height: 44, borderRadius: 6, overflow: "hidden", flexShrink: 0 }}>
+                  <img src={nextFile.url} alt={nextFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>⏭️ Als Nächstes kommt:</div>
+                  <strong style={{ fontSize: "0.92rem", color: "#cbd5e1" }}>{nextSolutionName}</strong>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: Teams, Scores & Quick Jump Image List */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+            }}
+          >
+            {/* Teams & Points awarding */}
+            <div
+              style={{
+                background: "#131826",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: 14,
+                padding: 16,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <strong style={{ fontSize: "0.95rem" }}>👥 Teams & Punktevergabe</strong>
+                {lastAward && (
+                  <button
+                    onClick={undoLastAward}
+                    style={{ fontSize: "0.78rem", padding: "3px 8px", background: "#450a0a", color: "#fecaca", border: "1px solid #991b1b" }}
+                  >
+                    ↩ Rückgängig (Strg+Z)
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(teams.length, 3)}, 1fr)`, gap: 10 }}>
+                {teams.map((t, i) => (
+                  <div
+                    key={t.name}
+                    style={{
+                      background: "#181f30",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 10,
+                      padding: 10,
+                      textAlign: "center",
+                    }}
+                  >
+                    <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>Team {t.name}</div>
+                    <div style={{ fontSize: "1.6rem", fontWeight: 900, color: "#4ade80", margin: "2px 0" }}>
+                      {t.score}
+                    </div>
+                    <button
+                      onClick={() => awardTeam(i)}
+                      style={{
+                        width: "100%",
+                        padding: "6px 0",
+                        fontSize: "0.8rem",
+                        background: "#312e81",
+                        borderColor: "#6366f1",
+                        color: "#fff",
+                      }}
+                    >
+                      + {currentPts} Pkt ({t.name})
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Image Jump Selector */}
+            <div
+              style={{
+                background: "#131826",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: 14,
+                padding: 16,
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                maxHeight: "380px",
+              }}
+            >
+              <strong style={{ fontSize: "0.95rem", marginBottom: 8 }}>
+                🖼️ Schnellwahl Bild ({files.length})
+              </strong>
+              <div
+                style={{
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  paddingRight: 4,
+                }}
+              >
+                {files.map((f, i) => {
+                  const isActive = i === current;
+                  return (
+                    <div
+                      key={f.url + i}
+                      onClick={() => selectImage(i)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        background: isActive ? "rgba(99, 102, 241, 0.25)" : "#181f30",
+                        border: isActive ? "1px solid #6366f1" : "1px solid transparent",
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      <div style={{ width: 32, height: 32, borderRadius: 6, overflow: "hidden", flexShrink: 0 }}>
+                        <img src={f.url} alt={f.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      </div>
+                      <span style={{ fontSize: "0.85rem", fontWeight: isActive ? 700 : 500, color: isActive ? "#fff" : "#cbd5e1" }}>
+                        #{i + 1} {formatImageName(f.name)}
+                      </span>
+                      {isActive && (
+                        <span style={{ marginLeft: "auto", fontSize: "0.72rem", background: "#4ade80", color: "#000", padding: "1px 5px", borderRadius: 4, fontWeight: 700 }}>
+                          AKTIV
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VIEW 2: START SCREEN
+  // ==========================================
   if (!isGameActive) {
     return (
       <div
@@ -560,6 +1115,7 @@ export default function App() {
       >
         {/* Top Header */}
         <header
+          className="no-print"
           style={{
             display: "flex",
             justifyContent: "space-between",
@@ -571,6 +1127,8 @@ export default function App() {
             position: "sticky",
             top: 0,
             zIndex: 20,
+            flexWrap: "wrap",
+            gap: 12,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -585,21 +1143,49 @@ export default function App() {
             </div>
           </div>
 
-          <button
-            onClick={() => setShowHelp(!showHelp)}
-            style={{
-              fontSize: "0.88rem",
-              background: showHelp ? "#312e81" : "#1e293b",
-              borderColor: showHelp ? "#6366f1" : "rgba(255,255,255,0.15)",
-              color: showHelp ? "#e0e7ff" : "#cbd5e1",
-            }}
-          >
-            ❓ {showHelp ? "Anleitung ausblenden" : "Wie funktioniert's?"}
-          </button>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={() => setShowSolutionModal(true)}
+              style={{
+                fontSize: "0.88rem",
+                background: "#1e293b",
+                borderColor: "#6366f1",
+                color: "#e0e7ff",
+              }}
+            >
+              📋 Spielleiter-Lösungsliste
+            </button>
+
+            <button
+              onClick={openControllerWindow}
+              style={{
+                fontSize: "0.88rem",
+                background: "#312e81",
+                borderColor: "#818cf8",
+                color: "#fff",
+              }}
+              title="Öffnet ein zweites Steuerungs-Fenster für den Moderator"
+            >
+              🖥️ Spielleiter-Konsole (Zweitfenster)
+            </button>
+
+            <button
+              onClick={() => setShowHelp(!showHelp)}
+              style={{
+                fontSize: "0.88rem",
+                background: showHelp ? "#1e293b" : "transparent",
+                borderColor: "rgba(255,255,255,0.15)",
+                color: "#cbd5e1",
+              }}
+            >
+              ❓ {showHelp ? "Anleitung" : "Hilfe"}
+            </button>
+          </div>
         </header>
 
         {/* Main Content Area */}
         <main
+          className="no-print"
           style={{
             flex: 1,
             display: "grid",
@@ -739,10 +1325,7 @@ export default function App() {
                       return (
                         <div
                           key={f.url + i}
-                          onClick={() => {
-                            setCurrent(i);
-                            setStepIndex(0);
-                          }}
+                          onClick={() => selectImage(i)}
                           style={{
                             width: 80,
                             height: 80,
@@ -756,7 +1339,7 @@ export default function App() {
                             position: "relative",
                             cursor: "pointer",
                           }}
-                          title={`Bild ${i + 1}: ${f.name} (Klicken zum Auswählen)`}
+                          title={`Bild ${i + 1}: ${formatImageName(f.name)} (Klicken zum Auswählen)`}
                         >
                           <img
                             src={f.url}
@@ -834,6 +1417,13 @@ export default function App() {
                   style={{ background: "#252e42", borderColor: "rgba(255,255,255,0.15)" }}
                 >
                   🖼️ Alle {files.length} Bilder ansehen & sortieren
+                </button>
+
+                <button
+                  onClick={() => setShowSolutionModal(true)}
+                  style={{ background: "#252e42", borderColor: "#6366f1" }}
+                >
+                  📋 Spielleiter-Lösungsliste
                 </button>
 
                 <button
@@ -1350,7 +1940,7 @@ export default function App() {
               </div>
 
               <div style={{ color: "#94a3b8", fontSize: "0.95rem" }}>
-                🎮 <strong>{files.length} Bilder</strong> • Aktuell bei: <strong>Bild {current + 1}</strong> • Modus: <strong>{revealModeLabel}</strong> • <strong>{teams.length} Teams ({teams.map((t) => t.name).join(", ")})</strong>
+                🎮 <strong>{files.length} Bilder</strong> • Aktuell bei: <strong>Bild {current + 1} ({currentSolutionName || "—"})</strong> • Modus: <strong>{revealModeLabel}</strong> • <strong>{teams.length} Teams ({teams.map((t) => t.name).join(", ")})</strong>
               </div>
 
               {/* Controls Cheatsheet Bar */}
@@ -1371,6 +1961,7 @@ export default function App() {
                 <span><kbd>Space</kbd> Schritt aufdecken</span>
                 <span><kbd>A</kbd> / <kbd>B</kbd> Punkte vergeben</span>
                 <span><kbd>L</kbd> Sofort auflösen</span>
+                <span><kbd>S</kbd> Spicker / Lösung</span>
                 <span><kbd>N</kbd> Nächstes Bild</span>
                 <span><kbd>R</kbd> Bild neu starten</span>
                 <span><kbd>F</kbd> Vollbild</span>
@@ -1379,7 +1970,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Image Preview & Order Modal */}
+          {/* Modal 1: Image Preview & Drag/Drop Order */}
           {showPreviewModal && (
             <div
               style={{
@@ -1424,7 +2015,7 @@ export default function App() {
                       Bilder-Vorschau & Reihenfolge ({files.length} Bilder)
                     </h2>
                     <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#94a3b8" }}>
-                      Klicke auf ein Bild, um direkt zu diesem Bild zu springen, oder verschiebe es per Drag & Drop.
+                      Klicke auf ein Bild, um direkt dorthin zu springen, oder verschiebe es per Drag & Drop.
                     </p>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -1464,11 +2055,7 @@ export default function App() {
                       <div
                         key={f.url + i}
                         draggable
-                        onClick={() => {
-                          setCurrent(i);
-                          setStepIndex(0);
-                          setHasStartedBefore(true);
-                        }}
+                        onClick={() => selectImage(i)}
                         onDragStart={(e) => {
                           e.dataTransfer.effectAllowed = "move";
                           setDraggedIdx(i);
@@ -1501,7 +2088,7 @@ export default function App() {
                           background: "#090d16",
                           transition: "border-color 0.2s",
                         }}
-                        title={`Bild ${i + 1}: ${f.name} (Klicken, um als aktives Bild zu wählen)`}
+                        title={`Bild ${i + 1}: ${formatImageName(f.name)}`}
                       >
                         <img
                           src={f.url}
@@ -1566,7 +2153,7 @@ export default function App() {
                             textOverflow: "ellipsis",
                           }}
                         >
-                          {i + 1}. {f.name.replace(/_\d+\.(png|jpg|webp)$/i, "")}
+                          {i + 1}. {formatImageName(f.name)}
                         </div>
                       </div>
                     );
@@ -1599,12 +2186,175 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {/* Modal 2: Solution List / Cheat Sheet for Presenter */}
+          {showSolutionModal && (
+            <div
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: "rgba(0, 0, 0, 0.88)",
+                backdropFilter: "blur(6px)",
+                zIndex: 110,
+                display: "grid",
+                placeItems: "center",
+                padding: 24,
+              }}
+            >
+              <div
+                className="solution-sheet"
+                style={{
+                  background: "#131826",
+                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                  borderRadius: 16,
+                  width: "min(100%, 940px)",
+                  maxHeight: "90vh",
+                  display: "flex",
+                  flexDirection: "column",
+                  boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
+                }}
+              >
+                <div
+                  className="no-print"
+                  style={{
+                    padding: "20px 24px",
+                    borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: "1.3rem", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span>📋</span>
+                      <span>Spielleiter-Lösungsliste ({files.length} Bilder)</span>
+                    </h2>
+                    <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#94a3b8" }}>
+                      Reihenfolge & Lösungsbegriffe für den Moderator
+                    </p>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <button
+                      onClick={copySolutionList}
+                      style={{ background: copiedNotification ? "#059669" : "#1e293b", fontSize: "0.85rem" }}
+                    >
+                      {copiedNotification ? "✅ Kopiert!" : "📋 Liste kopieren"}
+                    </button>
+                    <button
+                      onClick={() => window.print()}
+                      style={{ background: "#252e42", fontSize: "0.85rem" }}
+                    >
+                      🖨️ Drucken / PDF
+                    </button>
+                    <button
+                      onClick={() => setShowSolutionModal(false)}
+                      style={{ background: "#4f46e5", color: "#fff", border: "none", fontSize: "0.85rem" }}
+                    >
+                      Schließen
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  className="solution-grid"
+                  style={{
+                    padding: 24,
+                    overflowY: "auto",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  {files.map((f, i) => (
+                    <div
+                      key={f.url + i}
+                      className="solution-card"
+                      style={{
+                        background: "#181f30",
+                        border: "1px solid rgba(255, 255, 255, 0.08)",
+                        borderRadius: 10,
+                        padding: 10,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 8,
+                          overflow: "hidden",
+                          background: "#000",
+                          flexShrink: 0,
+                          border: "1px solid rgba(255,255,255,0.1)",
+                        }}
+                      >
+                        <img
+                          src={f.url}
+                          alt={f.name}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: "0.75rem", color: "#818cf8", fontWeight: 700 }}>
+                          #{i + 1}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "0.95rem",
+                            fontWeight: 700,
+                            color: "#f8fafc",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                          title={formatImageName(f.name)}
+                        >
+                          {formatImageName(f.name)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div
+                  className="no-print"
+                  style={{
+                    padding: "12px 24px",
+                    borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+                    color: "#94a3b8",
+                    fontSize: "0.85rem",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <span>💡 Tipp: Du kannst diese Liste vorab ausdrucken oder auf deinem Smartphone öffnen.</span>
+                  <button
+                    onClick={() => setShowSolutionModal(false)}
+                    style={{ fontSize: "0.8rem", background: "transparent", color: "#cbd5e1" }}
+                  >
+                    Schließen
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     );
   }
 
-  // Active In-Game Screen
+  // ==========================================
+  // VIEW 3: ACTIVE IN-GAME SCREEN (BEAMER / MAIN)
+  // ==========================================
   return (
     <div style={{ height: "100vh", display: "grid", gridTemplateRows: "auto 1fr", background: "#0c0e14" }}>
       <header
@@ -1617,11 +2367,16 @@ export default function App() {
           color: "#fff",
           borderBottom: "1px solid rgba(255,255,255,0.1)",
           flexWrap: "wrap",
+          position: "relative",
+          zIndex: 30,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button
-            onClick={() => setIsGameActive(false)}
+            onClick={() => {
+              setIsGameActive(false);
+              broadcastAction("ACTION_SET_GAME_ACTIVE", { isGameActive: false });
+            }}
             style={{
               background: "#1e293b",
               border: "1px solid rgba(255,255,255,0.15)",
@@ -1641,6 +2396,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* In-Game Action Buttons */}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={prevStep}>◀ Schritt</button>
           <button
@@ -1649,13 +2405,108 @@ export default function App() {
           >
             Schritt ▶ (Space)
           </button>
-          <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={() => setStepIndex(stepsTotal)}>Lösen (L)</button>
+          <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={solveRound}>Lösen (L)</button>
           <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={nextImage}>Nächstes Bild (N)</button>
           <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={resetRound}>Runde reset (R)</button>
           <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={() => fileInputRef.current?.click()}>➕ Bilder</button>
           <input ref={fileInputRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={onAddFiles} />
         </div>
 
+        {/* Spielleiter Spicker Dropdown Button */}
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => setShowCheatPopover(!showCheatPopover)}
+            onMouseEnter={() => setShowCheatPopover(true)}
+            style={{
+              fontSize: "0.8rem",
+              padding: "4px 10px",
+              background: showCheatPopover ? "#312e81" : "#1e293b",
+              borderColor: showCheatPopover ? "#818cf8" : "rgba(255,255,255,0.15)",
+              color: "#e0e7ff",
+            }}
+            title="Zeigt die Lösung für den Spielleiter an (Taste S)"
+          >
+            🕵️‍♂️ Spicker (S)
+          </button>
+
+          {/* Cheat Sheet Popover */}
+          {showCheatPopover && (
+            <div
+              onMouseLeave={() => setShowCheatPopover(false)}
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                marginTop: 8,
+                background: "#131826",
+                border: "1px solid rgba(99, 102, 241, 0.4)",
+                borderRadius: 12,
+                padding: 14,
+                width: 280,
+                boxShadow: "0 12px 30px rgba(0,0,0,0.6)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                zIndex: 50,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 6 }}>
+                <strong style={{ fontSize: "0.85rem", color: "#818cf8" }}>🕵️‍♂️ Spielleiter-Spickzettel</strong>
+                <button
+                  onClick={() => setShowCheatPopover(false)}
+                  style={{ background: "transparent", border: "none", padding: 2, color: "#64748b", cursor: "pointer" }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Current Image Solution */}
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div style={{ width: 44, height: 44, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
+                  {currentFile && (
+                    <img src={currentFile.url} alt={currentFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  )}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: "0.72rem", color: "#4ade80", fontWeight: 700 }}>AKTUELLE LÖSUNG:</div>
+                  <strong style={{ fontSize: "0.95rem", color: "#fff", display: "block", wordBreak: "break-word" }}>
+                    {currentSolutionName || "—"}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Next Image Teaser */}
+              {nextFile && (
+                <div style={{ display: "flex", gap: 10, alignItems: "center", borderTop: "1px dashed rgba(255,255,255,0.1)", paddingTop: 8 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
+                    <img src={nextFile.url} alt={nextFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: "0.68rem", color: "#94a3b8" }}>NÄCHSTES BILD:</div>
+                    <span style={{ fontSize: "0.85rem", color: "#cbd5e1", display: "block", wordBreak: "break-word" }}>
+                      {nextSolutionName || "—"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={openControllerWindow}
+                style={{
+                  width: "100%",
+                  marginTop: 4,
+                  fontSize: "0.78rem",
+                  background: "#1e293b",
+                  borderColor: "rgba(255,255,255,0.15)",
+                }}
+              >
+                🖥️ Spielleiter-Konsole öffnen
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right Header Area: Scores & Undo */}
         <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           {lastAward && (
             <button
@@ -1720,6 +2571,7 @@ export default function App() {
         </div>
       </header>
 
+      {/* Interactive Game Canvas */}
       <div style={{ position: "relative", background: "#0b0e14" }}>
         <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
       </div>
