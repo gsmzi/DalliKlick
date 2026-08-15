@@ -9,56 +9,69 @@ const GERMAN_IMAGE_TRANSLATIONS = {
   acoustic_guitar: "Akustikgitarre",
   airplane: "Flugzeug",
   alarm_clock: "Wecker",
-  blue_bicycle: "Blaues Fahrrad",
-  brick_house: "Backsteinhaus",
-  coffee_mug: "Kaffeetasse",
+  astronaut_space: "Astronaut im Weltall",
   aurora: "Polarlichter (Aurora)",
   balloons: "Luftballons",
+  bengal_tiger: "Königstiger (Bengal-Tiger)",
+  big_ben: "Big Ben (London)",
+  blue_bicycle: "Blaues Fahrrad",
+  brandenburg_gate: "Brandenburger Tor (Berlin)",
+  brick_house: "Backsteinhaus",
   butterfly: "Schmetterling",
   car: "Oldtimer / Auto",
   castle: "Schloss Neuschwanstein",
   chameleon: "Chamäleon",
   christ_redeemer: "Christusstatue (Rio de Janeiro)",
+  coffee_mug: "Kaffeetasse",
   coral: "Korallenriff",
+  cute_snowman: "Schneemann",
   dog: "Hund (Welpe)",
   dragon: "Drache",
   eagle: "Adler",
   eiffel: "Eiffelturm (Paris)",
-  hot_air_balloon: "Heißluftballon",
-  ocean_island: "Südseeinsel",
-  sunrise_city: "Skyline bei Sonnenaufgang",
+  emperor_penguin: "Kaiserpinguin",
+  fire_engine: "Feuerwehrauto",
+  fluffy_rabbit: "Flauschiger Hase",
+  fresh_strawberry: "Frische Erdbeere",
+  giant_panda: "Großer Panda (Riesenpanda)",
   giza_pyramids: "Pyramiden von Gizeh",
   golden_gate: "Golden Gate Bridge (San Francisco)",
+  golden_retriever: "Golden Retriever",
   great_wall: "Chinesische Mauer",
   havana: "Havanna (Oldtimer Kuba)",
+  hot_air_balloon: "Heißluftballon",
   kitten: "Kätzchen",
   lavender_balloon: "Heißluftballon über Lavendelfeld",
   library: "Bibliothek",
   lighthouse_cliff: "Leuchtturm an der Steilküste",
   machu_picchu: "Machu Picchu (Peru)",
   moon: "Mond im Weltall",
+  oak_tree: "Eichenbaum",
   oasis: "Wüstenoase",
+  ocean_island: "Südseeinsel",
+  open_book: "Aufgeschlagenes Buch",
   pizza: "Pizza",
+  red_apple: "Roter Apfel",
+  red_fox: "Rotfuchs",
   red_squirrel: "Eichhörnchen",
+  rescue_helicopter: "Rettungshubschrauber",
   rome_colosseum: "Kolosseum (Rom)",
+  soccer_ball: "Fußball",
   space: "Weltall / Universum",
   statue_liberty: "Freiheitsstatue (New York)",
   steam_locomotive: "Dampflokomotive",
   stonehenge: "Stonehenge",
   submarine: "U-Boot",
+  sunrise_city: "Skyline bei Sonnenaufgang",
   sydney_opera: "Opernhaus Sydney",
+  tabby_cat: "Getigerte Katze",
   taj_mahal: "Taj Mahal",
+  tall_ship: "Historisches Segelschiff",
+  tower_pisa: "Schiefer Turm von Pisa",
   train: "Zug / Eisenbahn",
   village: "Malerisches Bergdorf",
   waterfall: "Wasserfall",
   wise_owl: "Eule",
-  fluffy_rabbit: "Flauschiger Hase",
-  golden_retriever: "Golden Retriever",
-  oak_tree: "Eichenbaum",
-  open_book: "Aufgeschlagenes Buch",
-  red_apple: "Roter Apfel",
-  soccer_ball: "Fußball",
-  tabby_cat: "Getigerte Katze",
   yellow_car: "Gelbes Auto",
   yellow_sunflower: "Sonnenblume",
 };
@@ -130,6 +143,18 @@ const GERMAN_WORD_TRANSLATIONS = {
   sunflower: "Sonnenblume",
   flower: "Blume",
   flowers: "Blumen",
+  panda: "Panda",
+  penguin: "Pinguin",
+  tiger: "Tiger",
+  fox: "Fuchs",
+  snowman: "Schneemann",
+  strawberry: "Erdbeere",
+  ship: "Schiff",
+  helicopter: "Hubschrauber",
+  truck: "LKW",
+  engine: "Feuerwehr",
+  gate: "Tor",
+  tower: "Turm",
   red: "Rot",
   blue: "Blau",
   yellow: "Gelb",
@@ -945,7 +970,7 @@ export default function App() {
     if (!picked.length) return;
     const mapped = picked.map((f) => ({
       name: f.name,
-      url: URL.createObjectURL(f),
+      url: `./bilder/${f.name}`,
       isDefault: false,
     }));
     setFiles(mapped);
@@ -1826,9 +1851,9 @@ export default function App() {
                         borderColor: "rgba(239, 68, 68, 0.4)",
                         color: "#fca5a5",
                       }}
-                      title="Setzt die Bilderliste zurück auf die 55 mitgelieferten Standardbilder"
+                      title={`Setzt die Bilderliste zurück auf die ${defaultImagesCount} mitgelieferten Standardbilder`}
                     >
-                      ↩ Zurück zu Standard-Bildern (55)
+                      ↩ Zurück zu Standard-Bildern ({defaultImagesCount})
                     </button>
                   )}
                 </div>
@@ -2590,7 +2615,7 @@ export default function App() {
                         onClick={resetToDefaultImages}
                         style={{ fontSize: "0.8rem", background: "transparent", color: "#fca5a5", border: "1px solid rgba(239, 68, 68, 0.3)" }}
                       >
-                        ↩ Auf Standard-Bilder (55) zurücksetzen
+                        ↩ Auf Standard-Bilder ({defaultImagesCount}) zurücksetzen
                       </button>
                     )}
                   </div>
