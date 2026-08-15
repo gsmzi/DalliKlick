@@ -194,7 +194,7 @@ export default function App() {
     setSyncStatus("connected");
   }, []);
 
-  // Multi-layer broadcast function (Direct Bridge + postMessage + BroadcastChannel + localStorage)
+  // Multi-layer broadcast function
   const publishSync = useCallback((type = "ACTION_EXECUTE") => {
     const currentState = stateRef.current;
     const fullPayload = { type, state: currentState, timestamp: Date.now() };
@@ -209,7 +209,7 @@ export default function App() {
       }
     } catch (e) {}
 
-    // 2. window.postMessage with targetOrigin = "*" (works even on file:// protocol!)
+    // 2. window.postMessage with targetOrigin = "*"
     try {
       if (window.opener) {
         window.opener.postMessage({ type: "DALLI_SYNC_MSG", payload: fullPayload }, "*");
@@ -240,7 +240,6 @@ export default function App() {
       window.__dalliControllerUpdate = (newState) => {
         applyRemoteState(newState);
       };
-      // Register with opener if available
       try {
         if (window.opener && window.opener.__dalliRegisterController) {
           window.opener.__dalliRegisterController(window);
@@ -263,7 +262,6 @@ export default function App() {
 
   // Initialize sync channels, postMessage & storage listeners
   useEffect(() => {
-    // 1. Initial State grab for controller
     if (isControllerWindow) {
       try {
         if (window.opener && window.opener.__dalliMainGetState) {
@@ -283,7 +281,6 @@ export default function App() {
       window.__dalliMainGetState = () => stateRef.current;
     }
 
-    // 2. Set up BroadcastChannel
     let ch = null;
     if (typeof window !== "undefined" && "BroadcastChannel" in window) {
       try {
@@ -307,7 +304,6 @@ export default function App() {
       } catch (e) {}
     }
 
-    // 3. Set up postMessage listener (Crucial for file:// protocol)
     const onWindowMessage = (e) => {
       if (e.data && e.data.type === "DALLI_SYNC_MSG" && e.data.payload) {
         if (e.data.payload.state) {
@@ -317,7 +313,6 @@ export default function App() {
     };
     window.addEventListener("message", onWindowMessage);
 
-    // 4. Set up localStorage storage event listener
     const onStorage = (e) => {
       if (e.key === STORAGE_KEY && e.newValue) {
         try {
@@ -328,7 +323,6 @@ export default function App() {
     };
     window.addEventListener("storage", onStorage);
 
-    // 5. Periodic ping for Controller window to ensure absolute sync
     let interval = null;
     if (isControllerWindow) {
       interval = setInterval(() => {
@@ -417,7 +411,7 @@ export default function App() {
     };
   }, []);
 
-  // Action Handlers (Mutate local state + publish immediate sync)
+  // Action Handlers
   const nextStep = useCallback(() => {
     setStepIndex((prev) => {
       const nextVal = clamp(prev + 1, 0, stepsTotal);
@@ -566,7 +560,7 @@ export default function App() {
     lastStepRef.current = { index: stepIndex, time: performance.now() };
   }, [stepIndex]);
 
-  // Main Canvas Rendering Loop (Only in Presentation/Main window)
+  // Main Canvas Rendering Loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || isControllerWindow) return;
@@ -944,622 +938,634 @@ export default function App() {
       ? "Tortenstücke (Radial)"
       : `Spirale (${spiralDirection === "outside-in" ? "Außen→Innen" : "Innen→Außen"})`;
 
-  // ==========================================
-  // VIEW 1: PRESENTER / CONTROLLER WINDOW
-  // ==========================================
-  if (isControllerWindow) {
-    const currentPts = pointsForStep(stepIndex, stepsTotal, 20);
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          flexDirection: "column",
-          background: "#0c0e14",
-          color: "#f1f5f9",
-          padding: 16,
-          boxSizing: "border-box",
-        }}
-      >
-        {/* Presenter Top Bar */}
-        <header
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "12px 18px",
-            background: "#131826",
-            border: "1px solid rgba(255, 255, 255, 0.1)",
-            borderRadius: 12,
-            marginBottom: 16,
-            flexWrap: "wrap",
-            gap: 10,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: "1.5rem" }}>🖥️</span>
-            <div>
-              <strong style={{ fontSize: "1.1rem", color: "#818cf8" }}>Spielleiter-Konsole</strong>
-              <div style={{ fontSize: "0.8rem", color: "#4ade80" }}>
-                🟢 Live synchronisiert mit Hauptfenster
-              </div>
+  return (
+    <>
+      {/* ==========================================
+          DEDICATED PRINT CONTAINER (FOR HIGH QUALITY PDFS)
+          ========================================== */}
+      <div id="solution-print-area">
+        <div className="print-header">
+          <h1>🎯 Dalli Klick – Spielleiter-Lösungsliste</h1>
+          <p>{files.length} Bilder in Spielreihenfolge</p>
+        </div>
+        <div className="print-grid">
+          {files.map((f, i) => (
+            <div key={f.url + i} className="print-card">
+              <span className="print-number">#{i + 1}</span>
+              <img src={f.url} alt={f.name} className="print-img" />
+              <div className="print-title">{formatImageName(f.name)}</div>
             </div>
-          </div>
+          ))}
+        </div>
+      </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              onClick={() => {
-                if (window.opener) {
-                  try {
-                    window.opener.focus();
-                  } catch (e) {}
-                }
-              }}
-              style={{ fontSize: "0.85rem", background: "#1e293b" }}
-              title="Zum Beamer/Hauptfenster wechseln"
-            >
-              📺 Zum Hauptfenster
-            </button>
-            <button
-              onClick={() => {
-                if (window.opener && window.opener.__dalliMainGetState) {
-                  applyRemoteState(window.opener.__dalliMainGetState());
-                }
-                if (channelRef.current) {
-                  channelRef.current.postMessage({ type: "REQUEST_STATE" });
-                }
-              }}
-              style={{ fontSize: "0.85rem", background: "#1e293b" }}
-              title="Aktualisiert die Synchronisation"
-            >
-              🔄 Sync
-            </button>
-          </div>
-        </header>
-
-        {/* Presenter Grid Layout */}
+      {/* ==========================================
+          SCREEN VIEWS (INTERACTIVE APP)
+          ========================================== */}
+      {isControllerWindow ? (
+        /* VIEW 1: PRESENTER / CONTROLLER WINDOW */
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "1.2fr 1fr",
-            gap: 16,
-            flex: 1,
+            minHeight: "100vh",
+            display: "flex",
+            flexDirection: "column",
+            background: "#0c0e14",
+            color: "#f1f5f9",
+            padding: 16,
+            boxSizing: "border-box",
           }}
         >
-          {/* Left Column: Uncensored Current Image & Big Control Actions */}
-          <div
+          {/* Presenter Top Bar */}
+          <header
             style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "12px 18px",
               background: "#131826",
               border: "1px solid rgba(255, 255, 255, 0.1)",
-              borderRadius: 14,
-              padding: 18,
-              display: "flex",
-              flexDirection: "column",
-              gap: 14,
+              borderRadius: 12,
+              marginBottom: 16,
+              flexWrap: "wrap",
+              gap: 10,
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontSize: "0.85rem", color: "#94a3b8", fontWeight: 700 }}>
-                AKTUELLES BILD #{current + 1} VON {files.length}
-              </span>
-              <span style={{ fontSize: "0.95rem", color: "#4ade80", fontWeight: 800 }}>
-                {currentPts} Punkte verfügbar
-              </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: "1.5rem" }}>🖥️</span>
+              <div>
+                <strong style={{ fontSize: "1.1rem", color: "#818cf8" }}>Spielleiter-Konsole</strong>
+                <div style={{ fontSize: "0.8rem", color: syncStatus === "connected" ? "#4ade80" : "#facc15" }}>
+                  {syncStatus === "connected" ? "🟢 Live synchronisiert mit Hauptfenster" : "🟡 Synchronisiere..."}
+                </div>
+              </div>
             </div>
 
-            {/* Unblurred Solution Banner */}
-            <div
-              style={{
-                background: "linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%)",
-                border: "2px solid #6366f1",
-                borderRadius: 12,
-                padding: 12,
-                display: "flex",
-                gap: 14,
-                alignItems: "center",
-              }}
-            >
-              <div
-                style={{
-                  width: 90,
-                  height: 90,
-                  borderRadius: 8,
-                  overflow: "hidden",
-                  background: "#000",
-                  flexShrink: 0,
-                  border: "1px solid rgba(255,255,255,0.2)",
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button
+                onClick={() => {
+                  if (window.opener) {
+                    try {
+                      window.opener.focus();
+                    } catch (e) {}
+                  }
                 }}
+                style={{ fontSize: "0.85rem", background: "#1e293b" }}
+                title="Zum Beamer/Hauptfenster wechseln"
               >
-                {currentFile && (
-                  <img
-                    src={currentFile.url}
-                    alt={currentFile.name}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                )}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: "0.78rem", color: "#a5b4fc", textTransform: "uppercase", fontWeight: 700 }}>
-                  Gesuchte Lösung:
-                </div>
-                <div style={{ fontSize: "1.5rem", fontWeight: 900, color: "#fff", margin: "2px 0 4px" }}>
-                  {currentSolutionName || "—"}
-                </div>
-                <div style={{ fontSize: "0.78rem", color: "#64748b" }}>
-                  Datei: {currentFile?.name}
-                </div>
-              </div>
-            </div>
-
-            {/* Step Progress Bar */}
-            <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: 12, borderRadius: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: 6 }}>
-                <span>Aufdeck-Fortschritt:</span>
-                <strong>{stepIndex} / {stepsTotal} Schritte ({Math.round((stepIndex / stepsTotal) * 100)}%)</strong>
-              </div>
-              <div style={{ width: "100%", height: 10, background: "#1e293b", borderRadius: 5, overflow: "hidden" }}>
-                <div
-                  style={{
-                    width: `${(stepIndex / stepsTotal) * 100}%`,
-                    height: "100%",
-                    background: "linear-gradient(90deg, #6366f1, #4ade80)",
-                    transition: "width 0.2s",
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Big Action Controls */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                📺 Zum Hauptfenster
+              </button>
               <button
-                onClick={nextStep}
-                style={{
-                  gridColumn: "1 / -1",
-                  padding: "16px",
-                  background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
-                  border: "none",
-                  fontSize: "1.15rem",
-                  fontWeight: 800,
-                  boxShadow: "0 4px 15px rgba(99, 102, 241, 0.4)",
+                onClick={() => {
+                  if (window.opener && window.opener.__dalliMainGetState) {
+                    applyRemoteState(window.opener.__dalliMainGetState());
+                  }
+                  if (channelRef.current) {
+                    channelRef.current.postMessage({ type: "REQUEST_STATE" });
+                  }
                 }}
+                style={{ fontSize: "0.85rem", background: "#1e293b" }}
+                title="Aktualisiert die Synchronisation"
               >
-                ⏭️ Nächster Schritt aufdecken (Space)
-              </button>
-
-              <button
-                onClick={solveRound}
-                style={{ padding: "12px", background: "#059669", borderColor: "#10b981", fontSize: "0.95rem" }}
-              >
-                💡 Sofort auflösen (L)
-              </button>
-
-              <button
-                onClick={nextImage}
-                style={{ padding: "12px", background: "#252e42", fontSize: "0.95rem" }}
-              >
-                ➡️ Nächstes Bild (N)
-              </button>
-
-              <button
-                onClick={prevStep}
-                style={{ padding: "8px", background: "#1e293b", fontSize: "0.85rem" }}
-              >
-                ◀ Schritt zurück
-              </button>
-
-              <button
-                onClick={resetRound}
-                style={{ padding: "8px", background: "#1e293b", fontSize: "0.85rem" }}
-              >
-                🔄 Runde neu starten (R)
+                🔄 Sync
               </button>
             </div>
+          </header>
 
-            {/* Next Image Teaser */}
-            {nextFile && (
-              <div
-                style={{
-                  marginTop: "auto",
-                  background: "rgba(15, 23, 42, 0.5)",
-                  border: "1px dashed rgba(255, 255, 255, 0.15)",
-                  borderRadius: 10,
-                  padding: 10,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                }}
-              >
-                <div style={{ width: 44, height: 44, borderRadius: 6, overflow: "hidden", flexShrink: 0 }}>
-                  <img src={nextFile.url} alt={nextFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>⏭️ Als Nächstes kommt:</div>
-                  <strong style={{ fontSize: "0.92rem", color: "#cbd5e1" }}>{nextSolutionName}</strong>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right Column: Teams, Scores & Quick Jump Image List */}
+          {/* Presenter Grid Layout */}
           <div
             style={{
-              display: "flex",
-              flexDirection: "column",
+              display: "grid",
+              gridTemplateColumns: "1.2fr 1fr",
               gap: 16,
+              flex: 1,
             }}
           >
-            {/* Teams & Points awarding */}
+            {/* Left Column: Uncensored Current Image & Big Control Actions */}
             <div
               style={{
                 background: "#131826",
                 border: "1px solid rgba(255, 255, 255, 0.1)",
                 borderRadius: 14,
-                padding: 16,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <strong style={{ fontSize: "0.95rem" }}>👥 Teams & Punktevergabe</strong>
-                {lastAward && (
-                  <button
-                    onClick={undoLastAward}
-                    style={{ fontSize: "0.78rem", padding: "3px 8px", background: "#450a0a", color: "#fecaca", border: "1px solid #991b1b" }}
-                  >
-                    ↩ Rückgängig (Strg+Z)
-                  </button>
-                )}
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(teams.length, 3)}, 1fr)`, gap: 10 }}>
-                {teams.map((t, i) => (
-                  <div
-                    key={t.name}
-                    style={{
-                      background: "#181f30",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: 10,
-                      padding: 10,
-                      textAlign: "center",
-                    }}
-                  >
-                    <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>Team {t.name}</div>
-                    <div style={{ fontSize: "1.6rem", fontWeight: 900, color: "#4ade80", margin: "2px 0" }}>
-                      {t.score}
-                    </div>
-                    <button
-                      onClick={() => awardTeam(i)}
-                      style={{
-                        width: "100%",
-                        padding: "6px 0",
-                        fontSize: "0.8rem",
-                        background: "#312e81",
-                        borderColor: "#6366f1",
-                        color: "#fff",
-                      }}
-                    >
-                      + {currentPts} Pkt ({t.name})
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Quick Image Jump Selector */}
-            <div
-              style={{
-                background: "#131826",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: 14,
-                padding: 16,
-                flex: 1,
+                padding: 18,
                 display: "flex",
                 flexDirection: "column",
-                overflow: "hidden",
-                maxHeight: "380px",
+                gap: 14,
               }}
             >
-              <strong style={{ fontSize: "0.95rem", marginBottom: 8 }}>
-                🖼️ Schnellwahl Bild ({files.length})
-              </strong>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6 }}>
+                <span style={{ fontSize: "0.85rem", color: "#94a3b8", fontWeight: 700 }}>
+                  AKTUELLES BILD #{current + 1} VON {files.length}
+                </span>
+                <span style={{ fontSize: "0.95rem", color: "#4ade80", fontWeight: 800 }}>
+                  {pointsForStep(stepIndex, stepsTotal, 20)} Punkte verfügbar
+                </span>
+              </div>
+
+              {/* Unblurred Solution Banner */}
               <div
                 style={{
-                  overflowY: "auto",
+                  background: "linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%)",
+                  border: "2px solid #6366f1",
+                  borderRadius: 12,
+                  padding: 12,
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                  paddingRight: 4,
+                  gap: 14,
+                  alignItems: "center",
                 }}
               >
-                {files.map((f, i) => {
-                  const isActive = i === current;
-                  return (
+                <div
+                  style={{
+                    width: 90,
+                    height: 90,
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    background: "#000",
+                    flexShrink: 0,
+                    border: "1px solid rgba(255,255,255,0.2)",
+                  }}
+                >
+                  {currentFile && (
+                    <img
+                      src={currentFile.url}
+                      alt={currentFile.name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "0.78rem", color: "#a5b4fc", textTransform: "uppercase", fontWeight: 700 }}>
+                    Gesuchte Lösung:
+                  </div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 900, color: "#fff", margin: "2px 0 4px", wordBreak: "break-word" }}>
+                    {currentSolutionName || "—"}
+                  </div>
+                  <div style={{ fontSize: "0.78rem", color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    Datei: {currentFile?.name}
+                  </div>
+                </div>
+              </div>
+
+              {/* Step Progress Bar */}
+              <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: 12, borderRadius: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: 6 }}>
+                  <span>Aufdeck-Fortschritt:</span>
+                  <strong>{stepIndex} / {stepsTotal} Schritte ({Math.round((stepIndex / stepsTotal) * 100)}%)</strong>
+                </div>
+                <div style={{ width: "100%", height: 10, background: "#1e293b", borderRadius: 5, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      width: `${(stepIndex / stepsTotal) * 100}%`,
+                      height: "100%",
+                      background: "linear-gradient(90deg, #6366f1, #4ade80)",
+                      transition: "width 0.2s",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Big Action Controls */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <button
+                  onClick={nextStep}
+                  style={{
+                    gridColumn: "1 / -1",
+                    padding: "16px",
+                    background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+                    border: "none",
+                    fontSize: "1.15rem",
+                    fontWeight: 800,
+                    boxShadow: "0 4px 15px rgba(99, 102, 241, 0.4)",
+                  }}
+                >
+                  ⏭️ Nächster Schritt aufdecken (Space)
+                </button>
+
+                <button
+                  onClick={solveRound}
+                  style={{ padding: "12px", background: "#059669", borderColor: "#10b981", fontSize: "0.95rem" }}
+                >
+                  💡 Sofort auflösen (L)
+                </button>
+
+                <button
+                  onClick={nextImage}
+                  style={{ padding: "12px", background: "#252e42", fontSize: "0.95rem" }}
+                >
+                  ➡️ Nächstes Bild (N)
+                </button>
+
+                <button
+                  onClick={prevStep}
+                  style={{ padding: "8px", background: "#1e293b", fontSize: "0.85rem" }}
+                >
+                  ◀ Schritt zurück
+                </button>
+
+                <button
+                  onClick={resetRound}
+                  style={{ padding: "8px", background: "#1e293b", fontSize: "0.85rem" }}
+                >
+                  🔄 Runde neu starten (R)
+                </button>
+              </div>
+
+              {/* Next Image Teaser */}
+              {nextFile && (
+                <div
+                  style={{
+                    marginTop: "auto",
+                    background: "rgba(15, 23, 42, 0.5)",
+                    border: "1px dashed rgba(255, 255, 255, 0.15)",
+                    borderRadius: 10,
+                    padding: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ width: 44, height: 44, borderRadius: 6, overflow: "hidden", flexShrink: 0 }}>
+                    <img src={nextFile.url} alt={nextFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>⏭️ Als Nächstes kommt:</div>
+                    <strong style={{ fontSize: "0.92rem", color: "#cbd5e1" }}>{nextSolutionName}</strong>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: Teams, Scores & Quick Jump Image List */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+              }}
+            >
+              {/* Teams & Points awarding */}
+              <div
+                style={{
+                  background: "#131826",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: 14,
+                  padding: 16,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <strong style={{ fontSize: "0.95rem" }}>👥 Teams & Punktevergabe</strong>
+                  {lastAward && (
+                    <button
+                      onClick={undoLastAward}
+                      style={{ fontSize: "0.78rem", padding: "3px 8px", background: "#450a0a", color: "#fecaca", border: "1px solid #991b1b" }}
+                    >
+                      ↩ Rückgängig (Strg+Z)
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(teams.length, 3)}, 1fr)`, gap: 10 }}>
+                  {teams.map((t, i) => (
                     <div
-                      key={f.url + i}
-                      onClick={() => selectImage(i)}
+                      key={t.name}
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        background: isActive ? "rgba(99, 102, 241, 0.25)" : "#181f30",
-                        border: isActive ? "1px solid #6366f1" : "1px solid transparent",
-                        cursor: "pointer",
-                        transition: "all 0.15s",
+                        background: "#181f30",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 10,
+                        padding: 10,
+                        textAlign: "center",
                       }}
                     >
-                      <div style={{ width: 32, height: 32, borderRadius: 6, overflow: "hidden", flexShrink: 0 }}>
-                        <img src={f.url} alt={f.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>Team {t.name}</div>
+                      <div style={{ fontSize: "1.6rem", fontWeight: 900, color: "#4ade80", margin: "2px 0" }}>
+                        {t.score}
                       </div>
-                      <span style={{ fontSize: "0.85rem", fontWeight: isActive ? 700 : 500, color: isActive ? "#fff" : "#cbd5e1" }}>
-                        #{i + 1} {formatImageName(f.name)}
-                      </span>
-                      {isActive && (
-                        <span style={{ marginLeft: "auto", fontSize: "0.72rem", background: "#4ade80", color: "#000", padding: "1px 5px", borderRadius: 4, fontWeight: 700 }}>
-                          AKTIV
-                        </span>
-                      )}
+                      <button
+                        onClick={() => awardTeam(i)}
+                        style={{
+                          width: "100%",
+                          padding: "6px 0",
+                          fontSize: "0.8rem",
+                          background: "#312e81",
+                          borderColor: "#6366f1",
+                          color: "#fff",
+                        }}
+                      >
+                        + {pointsForStep(stepIndex, stepsTotal, 20)} Pkt ({t.name})
+                      </button>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+              </div>
+
+              {/* Quick Image Jump Selector */}
+              <div
+                style={{
+                  background: "#131826",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: 14,
+                  padding: 16,
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                  maxHeight: "380px",
+                }}
+              >
+                <strong style={{ fontSize: "0.95rem", marginBottom: 8 }}>
+                  🖼️ Schnellwahl Bild ({files.length})
+                </strong>
+                <div
+                  style={{
+                    overflowY: "auto",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    paddingRight: 4,
+                  }}
+                >
+                  {files.map((f, i) => {
+                    const isActive = i === current;
+                    return (
+                      <div
+                        key={f.url + i}
+                        onClick={() => selectImage(i)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          background: isActive ? "rgba(99, 102, 241, 0.25)" : "#181f30",
+                          border: isActive ? "1px solid #6366f1" : "1px solid transparent",
+                          cursor: "pointer",
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        <div style={{ width: 32, height: 32, borderRadius: 6, overflow: "hidden", flexShrink: 0 }}>
+                          <img src={f.url} alt={f.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        </div>
+                        <span style={{ fontSize: "0.85rem", fontWeight: isActive ? 700 : 500, color: isActive ? "#fff" : "#cbd5e1" }}>
+                          #{i + 1} {formatImageName(f.name)}
+                        </span>
+                        {isActive && (
+                          <span style={{ marginLeft: "auto", fontSize: "0.72rem", background: "#4ade80", color: "#000", padding: "1px 5px", borderRadius: 4, fontWeight: 700 }}>
+                            AKTIV
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  // ==========================================
-  // VIEW 2: START SCREEN
-  // ==========================================
-  if (!isGameActive) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          flexDirection: "column",
-          background: "radial-gradient(ellipse at top, #141b2d 0%, #0c0e14 70%)",
-          color: "#f1f5f9",
-          paddingBottom: 40,
-        }}
-      >
-        {/* Top Header */}
-        <header
-          className="no-print"
+      ) : !isGameActive ? (
+        /* VIEW 2: START SCREEN */
+        <div
           style={{
+            minHeight: "100vh",
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "16px 28px",
-            background: "rgba(15, 23, 42, 0.85)",
-            backdropFilter: "blur(12px)",
-            borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-            position: "sticky",
-            top: 0,
-            zIndex: 20,
-            flexWrap: "wrap",
-            gap: 12,
+            flexDirection: "column",
+            background: "radial-gradient(ellipse at top, #141b2d 0%, #0c0e14 70%)",
+            color: "#f1f5f9",
+            paddingBottom: 40,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: "1.8rem" }}>🎯</span>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: "1.25rem", letterSpacing: "0.5px" }}>
-                DALLI KLICK <span style={{ color: "#818cf8" }}>MODERN</span>
-              </div>
-              <div style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
-                Interaktives Bilderrätsel für Teams & Partys
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <button
-              onClick={() => setShowSolutionModal(true)}
-              style={{
-                fontSize: "0.88rem",
-                background: "#1e293b",
-                borderColor: "#6366f1",
-                color: "#e0e7ff",
-              }}
-            >
-              📋 Spielleiter-Lösungsliste
-            </button>
-
-            <button
-              onClick={openControllerWindow}
-              style={{
-                fontSize: "0.88rem",
-                background: "#312e81",
-                borderColor: "#818cf8",
-                color: "#fff",
-              }}
-              title="Öffnet ein zweites Steuerungs-Fenster für den Moderator"
-            >
-              🖥️ Spielleiter-Konsole (Zweitfenster)
-            </button>
-
-            <button
-              onClick={() => setShowHelp(!showHelp)}
-              style={{
-                fontSize: "0.88rem",
-                background: showHelp ? "#1e293b" : "transparent",
-                borderColor: "rgba(255,255,255,0.15)",
-                color: "#cbd5e1",
-              }}
-            >
-              ❓ {showHelp ? "Anleitung" : "Hilfe"}
-            </button>
-          </div>
-        </header>
-
-        {/* Main Content Area */}
-        <main
-          className="no-print"
-          style={{
-            flex: 1,
-            display: "grid",
-            placeItems: "center",
-            padding: "24px 16px",
-          }}
-        >
-          <div
+          {/* Top Header */}
+          <header
             style={{
-              width: "min(960px, 100%)",
-              display: "grid",
-              gap: 24,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "16px 28px",
+              background: "rgba(15, 23, 42, 0.85)",
+              backdropFilter: "blur(12px)",
+              borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+              position: "sticky",
+              top: 0,
+              zIndex: 20,
+              flexWrap: "wrap",
+              gap: 12,
             }}
           >
-            {/* Help / Game Rules Card */}
-            {showHelp && (
-              <div
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: "1.8rem" }}>🎯</span>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: "1.25rem", letterSpacing: "0.5px" }}>
+                  DALLI KLICK <span style={{ color: "#818cf8" }}>MODERN</span>
+                </div>
+                <div style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
+                  Interaktives Bilderrätsel für Teams & Partys
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                onClick={() => setShowSolutionModal(true)}
                 style={{
-                  background: "linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)",
-                  border: "1px solid rgba(99, 102, 241, 0.35)",
-                  borderRadius: 16,
-                  padding: "20px 24px",
-                  boxShadow: "0 8px 30px rgba(0, 0, 0, 0.35)",
+                  fontSize: "0.88rem",
+                  background: "#1e293b",
+                  borderColor: "#6366f1",
+                  color: "#e0e7ff",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                  <span style={{ fontSize: "1.3rem" }}>💡</span>
-                  <h2 style={{ margin: 0, fontSize: "1.15rem", color: "#e2e8f0" }}>
-                    So funktioniert das Spiel (Spielanleitung)
-                  </h2>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                    gap: 16,
-                    fontSize: "0.9rem",
-                    color: "#cbd5e1",
-                    lineHeight: 1.45,
-                  }}
-                >
-                  <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: 14, borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <strong style={{ color: "#38bdf8", display: "block", marginBottom: 4 }}>1. Verdecktes Bild</strong>
-                    Ein geheimes Motiv ist hinter Kacheln oder Masken verborgen.
-                  </div>
-                  <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: 14, borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <strong style={{ color: "#38bdf8", display: "block", marginBottom: 4 }}>2. Aufdecken</strong>
-                    Mit der <kbd>Leertaste</kbd> (oder Button) wird das Bild schrittweise sichtbar.
-                  </div>
-                  <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: 14, borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <strong style={{ color: "#38bdf8", display: "block", marginBottom: 4 }}>3. Erraten & Rufen</strong>
-                    Wer das Motiv zuerst erkennt, ruft die Lösung. Punkte per Taste <kbd>A</kbd>, <kbd>B</kbd>, ... vergeben.
-                  </div>
-                  <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: 14, borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <strong style={{ color: "#4ade80", display: "block", marginBottom: 4 }}>4. Schnelligkeit zählt</strong>
-                    Je früher (mit weniger Aufdeck-Schritten) gelöst wird, desto mehr Punkte gibt es (bis zu 20 Pkt)!
-                  </div>
-                </div>
-              </div>
-            )}
+                📋 Spielleiter-Lösungsliste
+              </button>
 
-            {/* Step 1: Images */}
+              <button
+                onClick={openControllerWindow}
+                style={{
+                  fontSize: "0.88rem",
+                  background: "#312e81",
+                  borderColor: "#818cf8",
+                  color: "#fff",
+                }}
+                title="Öffnet ein zweites Steuerungs-Fenster für den Moderator"
+              >
+                🖥️ Spielleiter-Konsole (Zweitfenster)
+              </button>
+
+              <button
+                onClick={() => setShowHelp(!showHelp)}
+                style={{
+                  fontSize: "0.88rem",
+                  background: showHelp ? "#1e293b" : "transparent",
+                  borderColor: "rgba(255,255,255,0.15)",
+                  color: "#cbd5e1",
+                }}
+              >
+                ❓ {showHelp ? "Anleitung" : "Hilfe"}
+              </button>
+            </div>
+          </header>
+
+          {/* Main Content Area */}
+          <main
+            style={{
+              flex: 1,
+              display: "grid",
+              placeItems: "center",
+              padding: "24px 16px",
+            }}
+          >
             <div
               style={{
-                background: "#131826",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: 16,
-                padding: "24px",
+                width: "min(960px, 100%)",
                 display: "grid",
-                gap: 16,
-                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.25)",
+                gap: 24,
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span
-                      style={{
-                        background: "#4f46e5",
-                        color: "#fff",
-                        width: 26,
-                        height: 26,
-                        borderRadius: "50%",
-                        display: "inline-grid",
-                        placeItems: "center",
-                        fontSize: "0.85rem",
-                        fontWeight: 700,
-                      }}
-                    >
-                      1
-                    </span>
-                    <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Bildauswahl</h2>
-                  </div>
-                  <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: "0.92rem" }}>
-                    Du kannst <strong>ohne Vorbereitung sofort loslegen</strong>: Die mitgelieferten Standardbilder sind bereits geladen.
-                  </p>
-                </div>
-
-                {/* Status Badge */}
+              {/* Help / Game Rules Card */}
+              {showHelp && (
                 <div
                   style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "6px 14px",
-                    borderRadius: 20,
-                    background: isUsingDefaultOnly ? "rgba(34, 197, 94, 0.15)" : "rgba(99, 102, 241, 0.15)",
-                    border: isUsingDefaultOnly ? "1px solid rgba(34, 197, 94, 0.4)" : "1px solid rgba(99, 102, 241, 0.4)",
-                    color: isUsingDefaultOnly ? "#4ade80" : "#a5b4fc",
-                    fontWeight: 600,
-                    fontSize: "0.88rem",
+                    background: "linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)",
+                    border: "1px solid rgba(99, 102, 241, 0.35)",
+                    borderRadius: 16,
+                    padding: "20px 24px",
+                    boxShadow: "0 8px 30px rgba(0, 0, 0, 0.35)",
                   }}
                 >
-                  <span>{isUsingDefaultOnly ? "✅" : "📁"}</span>
-                  <span>
-                    {isUsingDefaultOnly
-                      ? `${files.length} Standard-Bilder aktiv (Sofort startklar!)`
-                      : `${files.length} Bilder in der Spielliste`}
-                  </span>
-                </div>
-              </div>
-
-              {/* Quick Image Preview Bar */}
-              {files.length > 0 && (
-                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                    <span style={{ fontSize: "1.3rem" }}>💡</span>
+                    <h2 style={{ margin: 0, fontSize: "1.15rem", color: "#e2e8f0" }}>
+                      So funktioniert das Spiel (Spielanleitung)
+                    </h2>
+                  </div>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      overflowX: "auto",
-                      padding: "8px 0",
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                      gap: 16,
+                      fontSize: "0.9rem",
+                      color: "#cbd5e1",
+                      lineHeight: 1.45,
                     }}
                   >
-                    {files.slice(0, 7).map((f, i) => {
-                      const isCurrentlyActive = i === current && hasStartedBefore;
-                      return (
-                        <div
-                          key={f.url + i}
-                          onClick={() => selectImage(i)}
-                          style={{
-                            width: 80,
-                            height: 80,
-                            borderRadius: 10,
-                            overflow: "hidden",
-                            border: isCurrentlyActive
-                              ? "2px solid #4ade80"
-                              : "1px solid rgba(255,255,255,0.15)",
-                            flexShrink: 0,
-                            background: "#090d16",
-                            position: "relative",
-                            cursor: "pointer",
-                          }}
-                          title={`Bild ${i + 1}: ${formatImageName(f.name)} (Klicken zum Auswählen)`}
-                        >
-                          <img
-                            src={f.url}
-                            alt={f.name}
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                          />
-                          {isCurrentlyActive && (
-                            <span
-                              style={{
+                    <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: 14, borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <strong style={{ color: "#38bdf8", display: "block", marginBottom: 4 }}>1. Verdecktes Bild</strong>
+                      Ein geheimes Motiv ist hinter Kacheln oder Masken verborgen.
+                    </div>
+                    <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: 14, borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <strong style={{ color: "#38bdf8", display: "block", marginBottom: 4 }}>2. Aufdecken</strong>
+                      Mit der <kbd>Leertaste</kbd> (oder Button) wird das Bild schrittweise sichtbar.
+                    </div>
+                    <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: 14, borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <strong style={{ color: "#38bdf8", display: "block", marginBottom: 4 }}>3. Erraten & Rufen</strong>
+                      Wer das Motiv zuerst erkennt, ruft die Lösung. Punkte per Taste <kbd>A</kbd>, <kbd>B</kbd>, ... vergeben.
+                    </div>
+                    <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: 14, borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <strong style={{ color: "#4ade80", display: "block", marginBottom: 4 }}>4. Schnelligkeit zählt</strong>
+                      Je früher (mit weniger Aufdeck-Schritten) gelöst wird, desto mehr Punkte gibt es (bis zu 20 Pkt)!
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 1: Images */}
+              <div
+                style={{
+                  background: "#131826",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: 16,
+                  padding: "24px",
+                  display: "grid",
+                  gap: 16,
+                  boxShadow: "0 4px 24px rgba(0, 0, 0, 0.25)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span
+                        style={{
+                          background: "#4f46e5",
+                          color: "#fff",
+                          width: 26,
+                          height: 26,
+                          borderRadius: "50%",
+                          display: "inline-grid",
+                          placeItems: "center",
+                          fontSize: "0.85rem",
+                          fontWeight: 700,
+                        }}
+                      >
+                        1
+                      </span>
+                      <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Bildauswahl</h2>
+                    </div>
+                    <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: "0.92rem" }}>
+                      Du kannst <strong>ohne Vorbereitung sofort loslegen</strong>: Die mitgelieferten Standardbilder sind bereits geladen.
+                    </p>
+                  </div>
+
+                  {/* Status Badge */}
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 14px",
+                      borderRadius: 20,
+                      background: isUsingDefaultOnly ? "rgba(34, 197, 94, 0.15)" : "rgba(99, 102, 241, 0.15)",
+                      border: isUsingDefaultOnly ? "1px solid rgba(34, 197, 94, 0.4)" : "1px solid rgba(99, 102, 241, 0.4)",
+                      color: isUsingDefaultOnly ? "#4ade80" : "#a5b4fc",
+                      fontWeight: 600,
+                      fontSize: "0.88rem",
+                    }}
+                  >
+                    <span>{isUsingDefaultOnly ? "✅" : "📁"}</span>
+                    <span>
+                      {isUsingDefaultOnly
+                        ? `${files.length} Standard-Bilder aktiv (Sofort startklar!)`
+                        : `${files.length} Bilder in der Spielliste`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Quick Image Preview Bar */}
+                {files.length > 0 && (
+                  <div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        overflowX: "auto",
+                        padding: "8px 0",
+                      }}
+                    >
+                      {files.slice(0, 7).map((f, i) => {
+                        const isCurrentlyActive = i === current && hasStartedBefore;
+                        return (
+                          <div
+                            key={f.url + i}
+                            onClick={() => selectImage(i)}
+                            style={{
+                              width: 80,
+                              height: 80,
+                              borderRadius: 10,
+                              overflow: "hidden",
+                              border: isCurrentlyActive
+                                ? "2px solid #4ade80"
+                                : "1px solid rgba(255,255,255,0.15)",
+                              flexShrink: 0,
+                              background: "#090d16",
+                              position: "relative",
+                              cursor: "pointer",
+                            }}
+                            title={`Bild ${i + 1}: ${formatImageName(f.name)} (Klicken zum Auswählen)`}
+                          >
+                            <img
+                              src={f.url}
+                              alt={f.name}
+                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            />
+                            {isCurrentlyActive && (
+                              <span
+                                style={{
                                 position: "absolute",
                                 top: 2,
                                 left: 2,
@@ -2459,7 +2465,6 @@ export default function App() {
               }}
             >
               <div
-                className="solution-sheet"
                 style={{
                   background: "#131826",
                   border: "1px solid rgba(255, 255, 255, 0.15)",
@@ -2472,7 +2477,6 @@ export default function App() {
                 }}
               >
                 <div
-                  className="no-print"
                   style={{
                     padding: "20px 24px",
                     borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
@@ -2502,13 +2506,13 @@ export default function App() {
                     </button>
                     <button
                       onClick={() => window.print()}
-                      style={{ background: "#252e42", fontSize: "0.85rem" }}
+                      style={{ background: "#4f46e5", color: "#fff", border: "none", fontSize: "0.85rem" }}
                     >
                       🖨️ Drucken / PDF
                     </button>
                     <button
                       onClick={() => setShowSolutionModal(false)}
-                      style={{ background: "#4f46e5", color: "#fff", border: "none", fontSize: "0.85rem" }}
+                      style={{ background: "#252e42", fontSize: "0.85rem" }}
                     >
                       Schließen
                     </button>
@@ -2516,7 +2520,6 @@ export default function App() {
                 </div>
 
                 <div
-                  className="solution-grid"
                   style={{
                     padding: 24,
                     overflowY: "auto",
@@ -2528,7 +2531,6 @@ export default function App() {
                   {files.map((f, i) => (
                     <div
                       key={f.url + i}
-                      className="solution-card"
                       style={{
                         background: "#181f30",
                         border: "1px solid rgba(255, 255, 255, 0.08)",
@@ -2579,7 +2581,6 @@ export default function App() {
                 </div>
 
                 <div
-                  className="no-print"
                   style={{
                     padding: "12px 24px",
                     borderTop: "1px solid rgba(255, 255, 255, 0.1)",
@@ -2603,233 +2604,230 @@ export default function App() {
           )}
         </main>
       </div>
-    );
-  }
-
-  // ==========================================
-  // VIEW 3: ACTIVE IN-GAME SCREEN (BEAMER / MAIN)
-  // ==========================================
-  return (
-    <div style={{ height: "100vh", display: "grid", gridTemplateRows: "auto 1fr", background: "#0c0e14" }}>
-      <header
-        style={{
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          padding: "10px 16px",
-          background: "#0f172a",
-          color: "#fff",
-          borderBottom: "1px solid rgba(255,255,255,0.1)",
-          flexWrap: "wrap",
-          position: "relative",
-          zIndex: 30,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button
-            onClick={() => {
-              setIsGameActive(false);
-              stateRef.current.isGameActive = false;
-              publishSync("ACTION_EXECUTE");
-            }}
-            style={{
-              background: "#1e293b",
-              border: "1px solid rgba(255,255,255,0.15)",
-              color: "#cbd5e1",
-              fontSize: "0.82rem",
-              padding: "4px 10px",
-            }}
-            title="Zurück zum Startbildschirm & Einstellungen"
-          >
-            🏠 Menü
-          </button>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <strong style={{ fontSize: "1.05rem" }}>Dalli Klick</strong>
-            <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-              (Bild {current + 1} von {files.length})
-            </span>
-          </div>
-        </div>
-
-        {/* In-Game Action Buttons */}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={prevStep}>◀ Schritt</button>
-          <button
-            style={{ fontSize: "0.78rem", padding: "4px 10px", background: "#312e81", borderColor: "#6366f1", color: "#e0e7ff" }}
-            onClick={nextStep}
-          >
-            Schritt ▶ (Space)
-          </button>
-          <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={solveRound}>Lösen (L)</button>
-          <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={nextImage}>Nächstes Bild (N)</button>
-          <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={resetRound}>Runde reset (R)</button>
-          <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={() => fileInputRef.current?.click()}>➕ Bilder</button>
-          <input ref={fileInputRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={onAddFiles} />
-        </div>
-
-        {/* Spielleiter Spicker Dropdown Button */}
-        <div style={{ position: "relative" }}>
-          <button
-            onClick={() => setShowCheatPopover(!showCheatPopover)}
-            onMouseEnter={() => setShowCheatPopover(true)}
-            style={{
-              fontSize: "0.8rem",
-              padding: "4px 10px",
-              background: showCheatPopover ? "#312e81" : "#1e293b",
-              borderColor: showCheatPopover ? "#818cf8" : "rgba(255,255,255,0.15)",
-              color: "#e0e7ff",
-            }}
-            title="Zeigt die Lösung für den Spielleiter an (Taste S)"
-          >
-            🕵️‍♂️ Spicker (S)
-          </button>
-
-          {/* Cheat Sheet Popover */}
-          {showCheatPopover && (
-            <div
-              onMouseLeave={() => setShowCheatPopover(false)}
-              style={{
-                position: "absolute",
-                top: "100%",
-                left: 0,
-                marginTop: 8,
-                background: "#131826",
-                border: "1px solid rgba(99, 102, 241, 0.4)",
-                borderRadius: 12,
-                padding: 14,
-                width: 280,
-                boxShadow: "0 12px 30px rgba(0,0,0,0.6)",
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-                zIndex: 50,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 6 }}>
-                <strong style={{ fontSize: "0.85rem", color: "#818cf8" }}>🕵️‍♂️ Spielleiter-Spickzettel</strong>
-                <button
-                  onClick={() => setShowCheatPopover(false)}
-                  style={{ background: "transparent", border: "none", padding: 2, color: "#64748b", cursor: "pointer" }}
-                >
-                  ✕
-                </button>
-              </div>
-
-              {/* Current Image Solution */}
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <div style={{ width: 44, height: 44, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
-                  {currentFile && (
-                    <img src={currentFile.url} alt={currentFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  )}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: "0.72rem", color: "#4ade80", fontWeight: 700 }}>AKTUELLE LÖSUNG:</div>
-                  <strong style={{ fontSize: "0.95rem", color: "#fff", display: "block", wordBreak: "break-word" }}>
-                    {currentSolutionName || "—"}
-                  </strong>
-                </div>
-              </div>
-
-              {/* Next Image Teaser */}
-              {nextFile && (
-                <div style={{ display: "flex", gap: 10, alignItems: "center", borderTop: "1px dashed rgba(255,255,255,0.1)", paddingTop: 8 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
-                    <img src={nextFile.url} alt={nextFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: "0.68rem", color: "#94a3b8" }}>NÄCHSTES BILD:</div>
-                    <span style={{ fontSize: "0.85rem", color: "#cbd5e1", display: "block", wordBreak: "break-word" }}>
-                      {nextSolutionName || "—"}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <button
-                onClick={openControllerWindow}
-                style={{
-                  width: "100%",
-                  marginTop: 4,
-                  fontSize: "0.78rem",
-                  background: "#1e293b",
-                  borderColor: "rgba(255,255,255,0.15)",
-                }}
-              >
-                🖥️ Spielleiter-Konsole öffnen
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Right Header Area: Scores & Undo */}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          {lastAward && (
+    ) : (
+      /* VIEW 3: ACTIVE IN-GAME SCREEN (BEAMER / MAIN) */
+      <div style={{ height: "100vh", display: "grid", gridTemplateRows: "auto 1fr", background: "#0c0e14" }}>
+        <header
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            padding: "10px 16px",
+            background: "#0f172a",
+            color: "#fff",
+            borderBottom: "1px solid rgba(255,255,255,0.1)",
+            flexWrap: "wrap",
+            position: "relative",
+            zIndex: 30,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button
-              onClick={undoLastAward}
+              onClick={() => {
+                setIsGameActive(false);
+                stateRef.current.isGameActive = false;
+                publishSync("ACTION_EXECUTE");
+              }}
+              style={{
+                background: "#1e293b",
+                border: "1px solid rgba(255,255,255,0.15)",
+                color: "#cbd5e1",
+                fontSize: "0.82rem",
+                padding: "4px 10px",
+              }}
+              title="Zurück zum Startbildschirm & Einstellungen"
+            >
+              🏠 Menü
+            </button>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <strong style={{ fontSize: "1.05rem" }}>Dalli Klick</strong>
+              <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
+                (Bild {current + 1} von {files.length})
+              </span>
+            </div>
+          </div>
+
+          {/* In-Game Action Buttons */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={prevStep}>◀ Schritt</button>
+            <button
+              style={{ fontSize: "0.78rem", padding: "4px 10px", background: "#312e81", borderColor: "#6366f1", color: "#e0e7ff" }}
+              onClick={nextStep}
+            >
+              Schritt ▶ (Space)
+            </button>
+            <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={solveRound}>Lösen (L)</button>
+            <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={nextImage}>Nächstes Bild (N)</button>
+            <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={resetRound}>Runde reset (R)</button>
+            <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={() => fileInputRef.current?.click()}>➕ Bilder</button>
+            <input ref={fileInputRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={onAddFiles} />
+          </div>
+
+          {/* Spielleiter Spicker Dropdown Button */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowCheatPopover(!showCheatPopover)}
+              onMouseEnter={() => setShowCheatPopover(true)}
               style={{
                 fontSize: "0.8rem",
                 padding: "4px 10px",
-                background: "#450a0a",
-                border: "1px solid #991b1b",
-                color: "#fecaca",
-                borderRadius: 8,
-                cursor: "pointer",
+                background: showCheatPopover ? "#312e81" : "#1e293b",
+                borderColor: showCheatPopover ? "#818cf8" : "rgba(255,255,255,0.15)",
+                color: "#e0e7ff",
               }}
-              title="Punktevergabe rückgängig machen (Strg+Z)"
+              title="Zeigt die Lösung für den Spielleiter an (Taste S)"
             >
-              ↩ Rückgängig
+              🕵️‍♂️ Spicker (S)
             </button>
-          )}
-          {teams.map((t, i) => (
-            <div
-              key={t.name}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "4px 12px",
-                background: "#1e293b",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: 10,
-              }}
-            >
-              <span style={{ fontSize: "1.05rem", fontWeight: "bold", color: "#94a3b8" }}>{t.name}</span>
-              <span
-                key={t._lastAward}
-                style={{
-                  fontSize: "1.6rem",
-                  fontWeight: "900",
-                  color: "#4ade80",
-                  display: "inline-block",
-                  minWidth: "2ch",
-                  textAlign: "center",
-                  animation: t._lastAward ? "scorePop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)" : "none",
-                }}
-              >
-                {t.score}
-              </span>
-              <button
-                onClick={() => awardTeam(i)}
-                style={{
-                  fontSize: "0.75rem",
-                  padding: "3px 8px",
-                  background: "#334155",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  color: "#fff",
-                }}
-                title={`Punkte geben (Taste ${t.name})`}
-              >
-                + Pkt
-              </button>
-            </div>
-          ))}
-        </div>
-      </header>
 
-      {/* Interactive Game Canvas */}
-      <div style={{ position: "relative", background: "#0b0e14" }}>
-        <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+            {/* Cheat Sheet Popover */}
+            {showCheatPopover && (
+              <div
+                onMouseLeave={() => setShowCheatPopover(false)}
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  marginTop: 8,
+                  background: "#131826",
+                  border: "1px solid rgba(99, 102, 241, 0.4)",
+                  borderRadius: 12,
+                  padding: 14,
+                  width: 280,
+                  boxShadow: "0 12px 30px rgba(0,0,0,0.6)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                  zIndex: 50,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 6 }}>
+                  <strong style={{ fontSize: "0.85rem", color: "#818cf8" }}>🕵️‍♂️ Spielleiter-Spickzettel</strong>
+                  <button
+                    onClick={() => setShowCheatPopover(false)}
+                    style={{ background: "transparent", border: "none", padding: 2, color: "#64748b", cursor: "pointer" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Current Image Solution */}
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
+                    {currentFile && (
+                      <img src={currentFile.url} alt={currentFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    )}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: "0.72rem", color: "#4ade80", fontWeight: 700 }}>AKTUELLE LÖSUNG:</div>
+                    <strong style={{ fontSize: "0.95rem", color: "#fff", display: "block", wordBreak: "break-word" }}>
+                      {currentSolutionName || "—"}
+                    </strong>
+                  </div>
+                </div>
+
+                {/* Next Image Teaser */}
+                {nextFile && (
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", borderTop: "1px dashed rgba(255,255,255,0.1)", paddingTop: 8 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
+                      <img src={nextFile.url} alt={nextFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: "0.68rem", color: "#94a3b8" }}>NÄCHSTES BILD:</div>
+                      <span style={{ fontSize: "0.85rem", color: "#cbd5e1", display: "block", wordBreak: "break-word" }}>
+                        {nextSolutionName || "—"}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={openControllerWindow}
+                  style={{
+                    width: "100%",
+                    marginTop: 4,
+                    fontSize: "0.78rem",
+                    background: "#1e293b",
+                    borderColor: "rgba(255,255,255,0.15)",
+                  }}
+                >
+                  🖥️ Spielleiter-Konsole öffnen
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Right Header Area: Scores & Undo */}
+          <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            {lastAward && (
+              <button
+                onClick={undoLastAward}
+                style={{
+                  fontSize: "0.8rem",
+                  padding: "4px 10px",
+                  background: "#450a0a",
+                  border: "1px solid #991b1b",
+                  color: "#fecaca",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                }}
+                title="Punktevergabe rückgängig machen (Strg+Z)"
+              >
+                ↩ Rückgängig
+              </button>
+            )}
+            {teams.map((t, i) => (
+              <div
+                key={t.name}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "4px 12px",
+                  background: "#1e293b",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 10,
+                }}
+              >
+                <span style={{ fontSize: "1.05rem", fontWeight: "bold", color: "#94a3b8" }}>{t.name}</span>
+                <span
+                  key={t._lastAward}
+                  style={{
+                    fontSize: "1.6rem",
+                    fontWeight: "900",
+                    color: "#4ade80",
+                    display: "inline-block",
+                    minWidth: "2ch",
+                    textAlign: "center",
+                    animation: t._lastAward ? "scorePop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)" : "none",
+                  }}
+                >
+                  {t.score}
+                </span>
+                <button
+                  onClick={() => awardTeam(i)}
+                  style={{
+                    fontSize: "0.75rem",
+                    padding: "3px 8px",
+                    background: "#334155",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    color: "#fff",
+                  }}
+                  title={`Punkte geben (Taste ${t.name})`}
+                >
+                  + Pkt
+                </button>
+              </div>
+            ))}
+          </div>
+        </header>
+
+        {/* Interactive Game Canvas */}
+        <div style={{ position: "relative", background: "#0b0e14" }}>
+          <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+        </div>
       </div>
-    </div>
+    )}
+  </>
   );
 }
