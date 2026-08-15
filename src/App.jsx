@@ -4,19 +4,170 @@ import { bilderList } from "virtual:bilder-list";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 
-// Helper to format image names cleanly
+// Dictionary mapping image names to German solution terms
+const GERMAN_IMAGE_TRANSLATIONS = {
+  acoustic_guitar: "Akustikgitarre",
+  airplane: "Flugzeug",
+  alarm_clock: "Wecker",
+  blue_bicycle: "Blaues Fahrrad",
+  brick_house: "Backsteinhaus",
+  coffee_mug: "Kaffeetasse",
+  aurora: "Polarlichter (Aurora)",
+  balloons: "Luftballons",
+  butterfly: "Schmetterling",
+  car: "Oldtimer / Auto",
+  castle: "Schloss Neuschwanstein",
+  chameleon: "Chamäleon",
+  christ_redeemer: "Christusstatue (Rio de Janeiro)",
+  coral: "Korallenriff",
+  dog: "Hund (Welpe)",
+  dragon: "Drache",
+  eagle: "Adler",
+  eiffel: "Eiffelturm (Paris)",
+  hot_air_balloon: "Heißluftballon",
+  ocean_island: "Südseeinsel",
+  sunrise_city: "Skyline bei Sonnenaufgang",
+  giza_pyramids: "Pyramiden von Gizeh",
+  golden_gate: "Golden Gate Bridge (San Francisco)",
+  great_wall: "Chinesische Mauer",
+  havana: "Havanna (Oldtimer Kuba)",
+  kitten: "Kätzchen",
+  lavender_balloon: "Heißluftballon über Lavendelfeld",
+  library: "Bibliothek",
+  lighthouse_cliff: "Leuchtturm an der Steilküste",
+  machu_picchu: "Machu Picchu (Peru)",
+  moon: "Mond im Weltall",
+  oasis: "Wüstenoase",
+  pizza: "Pizza",
+  red_squirrel: "Eichhörnchen",
+  rome_colosseum: "Kolosseum (Rom)",
+  space: "Weltall / Universum",
+  statue_liberty: "Freiheitsstatue (New York)",
+  steam_locomotive: "Dampflokomotive",
+  stonehenge: "Stonehenge",
+  submarine: "U-Boot",
+  sydney_opera: "Opernhaus Sydney",
+  taj_mahal: "Taj Mahal",
+  train: "Zug / Eisenbahn",
+  village: "Malerisches Bergdorf",
+  waterfall: "Wasserfall",
+  wise_owl: "Eule",
+  fluffy_rabbit: "Flauschiger Hase",
+  golden_retriever: "Golden Retriever",
+  oak_tree: "Eichenbaum",
+  open_book: "Aufgeschlagenes Buch",
+  red_apple: "Roter Apfel",
+  soccer_ball: "Fußball",
+  tabby_cat: "Getigerte Katze",
+  yellow_car: "Gelbes Auto",
+  yellow_sunflower: "Sonnenblume",
+};
+
+const GERMAN_WORD_TRANSLATIONS = {
+  guitar: "Gitarre",
+  acoustic: "Akustik",
+  airplane: "Flugzeug",
+  plane: "Flugzeug",
+  alarm: "Wecker",
+  clock: "Uhr",
+  bicycle: "Fahrrad",
+  bike: "Fahrrad",
+  house: "Haus",
+  brick: "Backstein",
+  coffee: "Kaffee",
+  mug: "Tasse",
+  cup: "Tasse",
+  balloons: "Luftballons",
+  balloon: "Ballon",
+  butterfly: "Schmetterling",
+  car: "Auto",
+  castle: "Schloss",
+  palace: "Palast",
+  dog: "Hund",
+  puppy: "Welpe",
+  cat: "Katze",
+  kitten: "Kätzchen",
+  dragon: "Drache",
+  eagle: "Adler",
+  bird: "Vogel",
+  ocean: "Ozean",
+  sea: "Meer",
+  island: "Insel",
+  beach: "Strand",
+  sunrise: "Sonnenaufgang",
+  sunset: "Sonnenuntergang",
+  city: "Stadt",
+  skyline: "Skyline",
+  pyramid: "Pyramide",
+  pyramids: "Pyramiden",
+  bridge: "Brücke",
+  wall: "Mauer",
+  lavender: "Lavendel",
+  library: "Bibliothek",
+  lighthouse: "Leuchtturm",
+  cliff: "Klippe",
+  moon: "Mond",
+  sun: "Sonne",
+  star: "Stern",
+  space: "Weltall",
+  squirrel: "Eichhörnchen",
+  locomotive: "Lokomotive",
+  train: "Zug",
+  village: "Dorf",
+  mountain: "Berg",
+  mountains: "Berge",
+  waterfall: "Wasserfall",
+  owl: "Eule",
+  rabbit: "Hase",
+  bunny: "Häschen",
+  tree: "Baum",
+  forest: "Wald",
+  book: "Buch",
+  apple: "Apfel",
+  soccer: "Fußball",
+  football: "Fußball",
+  ball: "Ball",
+  sunflower: "Sonnenblume",
+  flower: "Blume",
+  flowers: "Blumen",
+  red: "Rot",
+  blue: "Blau",
+  yellow: "Gelb",
+  green: "Grün",
+  white: "Weiß",
+  black: "Schwarz",
+  golden: "Gold",
+  big: "Groß",
+  small: "Klein",
+};
+
+// Helper to format image names cleanly in German
 export function formatImageName(name) {
   if (!name) return "";
-  let clean = name.replace(/\.[^/.]+$/, "");
-  clean = clean.replace(/_\d{10,}$/, "");
-  clean = clean.replace(/^dalli_/i, "");
-  clean = clean.replace(/^dalli_generated_/i, "");
-  clean = clean.replace(/[_-]+/g, " ");
-  return clean
-    .split(" ")
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
+  let key = name.replace(/\.[^/.]+$/, "");
+  key = key.replace(/_\d{10,}$/, "");
+  key = key.replace(/^dalli_/i, "");
+  key = key.replace(/^dalli_generated_/i, "");
+  key = key.toLowerCase().trim();
+
+  // Direct match in German translations
+  if (GERMAN_IMAGE_TRANSLATIONS[key]) {
+    return GERMAN_IMAGE_TRANSLATIONS[key];
+  }
+
+  // Tokenized word-level German mapping
+  const words = key.split(/[_-]+/).filter(Boolean);
+  if (words.length === 0) return name;
+
+  const translatedWords = words.map((w) => {
+    const lower = w.toLowerCase();
+    if (GERMAN_WORD_TRANSLATIONS[lower]) {
+      return GERMAN_WORD_TRANSLATIONS[lower];
+    }
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  });
+
+  return translatedWords.join(" ");
 }
 
 const addRoundedRectPath = (ctx, x, y, w, h, r) => {
@@ -58,9 +209,9 @@ function makeSpiralOrder(tileN, direction = "outside-in", seed = 1) {
       for (let y = bottom - 1; y > top; y--) order.push(y * tileN + left);
     }
     top += 1;
-    bottom -= 1;
+    bottom += 1;
     left += 1;
-    right -= 1;
+    right += 1;
   }
 
   const baseOrder = direction === "inside-out" ? order.slice().reverse() : order;
@@ -923,7 +1074,7 @@ export default function App() {
 
   const copySolutionList = () => {
     const text = files
-      .map((f, i) => `${i + 1}. ${formatImageName(f.name)} (${f.name})`)
+      .map((f, i) => `${i + 1}. ${formatImageName(f.name)}`)
       .join("\n");
     navigator.clipboard?.writeText(text).then(() => {
       setCopiedNotification(true);
@@ -1096,7 +1247,7 @@ export default function App() {
                   <div style={{ fontSize: "0.78rem", color: "#a5b4fc", textTransform: "uppercase", fontWeight: 700 }}>
                     Gesuchte Lösung:
                   </div>
-                  <div style={{ fontSize: "1.5rem", fontWeight: 900, color: "#fff", margin: "2px 0 4px", wordBreak: "break-word" }}>
+                  <div style={{ fontSize: "1.45rem", fontWeight: 900, color: "#fff", margin: "2px 0 4px", wordBreak: "break-word" }}>
                     {currentSolutionName || "—"}
                   </div>
                   <div style={{ fontSize: "0.78rem", color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1566,464 +1717,135 @@ export default function App() {
                             {isCurrentlyActive && (
                               <span
                                 style={{
+                                  position: "absolute",
+                                  top: 2,
+                                  left: 2,
+                                  background: "#4ade80",
+                                  color: "#000",
+                                  fontSize: "9px",
+                                  fontWeight: "bold",
+                                  padding: "1px 4px",
+                                  borderRadius: 4,
+                                }}
+                              >
+                                AKTIV
+                              </span>
+                            )}
+                            <span
+                              style={{
                                 position: "absolute",
-                                top: 2,
-                                left: 2,
-                                background: "#4ade80",
-                                color: "#000",
-                                fontSize: "9px",
-                                fontWeight: "bold",
+                                bottom: 2,
+                                right: 4,
+                                background: "rgba(0,0,0,0.7)",
+                                fontSize: "10px",
                                 padding: "1px 4px",
                                 borderRadius: 4,
+                                color: "#fff",
                               }}
                             >
-                              AKTIV
+                              #{i + 1}
                             </span>
-                          )}
-                          <span
-                            style={{
-                              position: "absolute",
-                              bottom: 2,
-                              right: 4,
-                              background: "rgba(0,0,0,0.7)",
-                              fontSize: "10px",
-                              padding: "1px 4px",
-                              borderRadius: 4,
-                              color: "#fff",
-                            }}
-                          >
-                            #{i + 1}
-                          </span>
-                        </div>
-                      );
-                    })}
+                          </div>
+                        );
+                      })}
 
-                    {files.length > 7 && (
-                      <button
-                        onClick={() => setShowPreviewModal(true)}
-                        style={{
-                          width: 80,
-                          height: 80,
-                          borderRadius: 10,
-                          background: "rgba(30, 41, 59, 0.8)",
-                          border: "1px dashed rgba(255,255,255,0.25)",
-                          color: "#94a3b8",
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "0.75rem",
-                          fontWeight: 600,
-                          flexShrink: 0,
-                          padding: 4,
-                          textAlign: "center",
-                        }}
-                      >
-                        <span style={{ fontSize: "1.1rem", marginBottom: 2 }}>➕</span>
-                        +{files.length - 7} weitere
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons for Images */}
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
-                <button
-                  onClick={() => setShowPreviewModal(true)}
-                  style={{ background: "#252e42", borderColor: "rgba(255,255,255,0.15)" }}
-                >
-                  🖼️ Alle {files.length} Bilder ansehen & sortieren
-                </button>
-
-                <button
-                  onClick={() => setShowSolutionModal(true)}
-                  style={{ background: "#252e42", borderColor: "#6366f1" }}
-                >
-                  📋 Spielleiter-Lösungsliste
-                </button>
-
-                <button
-                  onClick={shuffleFiles}
-                  style={{ background: "#252e42", borderColor: "rgba(255,255,255,0.15)" }}
-                  title="Mischt die Bilderreihenfolge per Zufall"
-                >
-                  🔀 Reihenfolge zufällig mischen
-                </button>
-
-                <button
-                  onClick={() => startScreenFileInputRef.current?.click()}
-                  style={{ background: "#1e293b", borderColor: "#4f46e5" }}
-                  title="Eigene Bilder von deiner Festplatte hinzufügen"
-                >
-                  ➕ Eigene Bilder hochladen…
-                </button>
-                <input
-                  ref={startScreenFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  style={{ display: "none" }}
-                  onChange={onAddFiles}
-                />
-
-                {!isUsingDefaultOnly && (
-                  <button
-                    onClick={resetToDefaultImages}
-                    style={{
-                      background: "transparent",
-                      borderColor: "rgba(239, 68, 68, 0.4)",
-                      color: "#fca5a5",
-                    }}
-                    title="Setzt die Bilderliste zurück auf die 55 mitgelieferten Standardbilder"
-                  >
-                    ↩ Zurück zu Standard-Bildern (55)
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Step 2: Game Mode & Rules */}
-            <div
-              style={{
-                background: "#131826",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: 16,
-                padding: "24px",
-                display: "grid",
-                gap: 20,
-                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.25)",
-              }}
-            >
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span
-                    style={{
-                      background: "#4f46e5",
-                      color: "#fff",
-                      width: 26,
-                      height: 26,
-                      borderRadius: "50%",
-                      display: "inline-grid",
-                      placeItems: "center",
-                      fontSize: "0.85rem",
-                      fontWeight: 700,
-                    }}
-                  >
-                    2
-                  </span>
-                  <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Aufdeck-Modus & Effekte</h2>
-                </div>
-                <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: "0.92rem" }}>
-                  Wähle das Muster, in dem die Bilder verdeckt und Schritt für Schritt enthüllt werden.
-                </p>
-              </div>
-
-              {/* Mode Selection Cards */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                  gap: 12,
-                }}
-              >
-                {/* Mode 1: Random Grid */}
-                <div
-                  onClick={() => {
-                    setRevealMode("GRID_RANDOM");
-                    stateRef.current.revealMode = "GRID_RANDOM";
-                    publishSync("ACTION_EXECUTE");
-                  }}
-                  style={{
-                    padding: 16,
-                    borderRadius: 12,
-                    background: revealMode === "GRID_RANDOM" ? "rgba(99, 102, 241, 0.15)" : "#181f30",
-                    border:
-                      revealMode === "GRID_RANDOM"
-                        ? "2px solid #6366f1"
-                        : "1px solid rgba(255, 255, 255, 0.08)",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                    <strong style={{ fontSize: "1rem", color: revealMode === "GRID_RANDOM" ? "#fff" : "#cbd5e1" }}>
-                      🔲 Zufälliges Raster
-                    </strong>
-                    {revealMode === "GRID_RANDOM" && (
-                      <span style={{ fontSize: "0.75rem", background: "#4f46e5", padding: "2px 8px", borderRadius: 10, color: "#fff" }}>
-                        Aktiv
-                      </span>
-                    )}
-                  </div>
-                  <p style={{ margin: 0, fontSize: "0.84rem", color: "#94a3b8", lineHeight: 1.4 }}>
-                    Klassisches Dalli-Klick-Feeling: Kacheln ploppen an zufälligen Positionen auf.
-                  </p>
-                </div>
-
-                {/* Mode 2: Radial Wedges */}
-                <div
-                  onClick={() => {
-                    setRevealMode("WEDGES_RADIAL");
-                    stateRef.current.revealMode = "WEDGES_RADIAL";
-                    publishSync("ACTION_EXECUTE");
-                  }}
-                  style={{
-                    padding: 16,
-                    borderRadius: 12,
-                    background: revealMode === "WEDGES_RADIAL" ? "rgba(99, 102, 241, 0.15)" : "#181f30",
-                    border:
-                      revealMode === "WEDGES_RADIAL"
-                        ? "2px solid #6366f1"
-                        : "1px solid rgba(255, 255, 255, 0.08)",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                    <strong style={{ fontSize: "1rem", color: revealMode === "WEDGES_RADIAL" ? "#fff" : "#cbd5e1" }}>
-                      🍰 Tortenstücke (Radial)
-                    </strong>
-                    {revealMode === "WEDGES_RADIAL" && (
-                      <span style={{ fontSize: "0.75rem", background: "#4f46e5", padding: "2px 8px", borderRadius: 10, color: "#fff" }}>
-                        Aktiv
-                      </span>
-                    )}
-                  </div>
-                  <p style={{ margin: 0, fontSize: "0.84rem", color: "#94a3b8", lineHeight: 1.4 }}>
-                    Enthüllung kreisförmig wie bei einer Uhr oder Torte im Zufallsmuster.
-                  </p>
-                </div>
-
-                {/* Mode 3: Spiral */}
-                <div
-                  onClick={() => {
-                    setRevealMode("SPIRAL_GRID");
-                    stateRef.current.revealMode = "SPIRAL_GRID";
-                    publishSync("ACTION_EXECUTE");
-                  }}
-                  style={{
-                    padding: 16,
-                    borderRadius: 12,
-                    background: revealMode === "SPIRAL_GRID" ? "rgba(99, 102, 241, 0.15)" : "#181f30",
-                    border:
-                      revealMode === "SPIRAL_GRID"
-                        ? "2px solid #6366f1"
-                        : "1px solid rgba(255, 255, 255, 0.08)",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                    <strong style={{ fontSize: "1rem", color: revealMode === "SPIRAL_GRID" ? "#fff" : "#cbd5e1" }}>
-                      🌀 Spirale
-                    </strong>
-                    {revealMode === "SPIRAL_GRID" && (
-                      <span style={{ fontSize: "0.75rem", background: "#4f46e5", padding: "2px 8px", borderRadius: 10, color: "#fff" }}>
-                        Aktiv
-                      </span>
-                    )}
-                  </div>
-                  <p style={{ margin: 0, fontSize: "0.84rem", color: "#94a3b8", lineHeight: 1.4 }}>
-                    Kacheln decken das Bild spiralförmig von außen nach innen (oder umgekehrt) auf.
-                  </p>
-                </div>
-              </div>
-
-              {/* Spiral Direction Sub-option */}
-              {revealMode === "SPIRAL_GRID" && (
-                <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#181f30", padding: "10px 16px", borderRadius: 8 }}>
-                  <span style={{ fontSize: "0.9rem", color: "#cbd5e1" }}>Spiralrichtung:</span>
-                  <select
-                    value={spiralDirection}
-                    onChange={(e) => {
-                      setSpiralDirection(e.target.value);
-                      stateRef.current.spiralDirection = e.target.value;
-                      publishSync("ACTION_EXECUTE");
-                    }}
-                  >
-                    <option value="outside-in">Von Außen nach Innen</option>
-                    <option value="inside-out">Von Innen nach Außen</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Slider Controls */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                  gap: 18,
-                  background: "rgba(15, 23, 42, 0.5)",
-                  padding: 16,
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.06)",
-                }}
-              >
-                {/* Disturb Slider */}
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <label htmlFor="disturb-slider" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-                      Störgrad & Verpixelung: <span style={{ color: "#818cf8" }}>{disturb} / 10</span>
-                    </label>
-                  </div>
-                  <input
-                    id="disturb-slider"
-                    type="range"
-                    min="0"
-                    max="10"
-                    value={disturb}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      setDisturb(val);
-                      stateRef.current.disturb = val;
-                      publishSync("ACTION_EXECUTE");
-                    }}
-                    style={{ width: "100%" }}
-                  />
-                  <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: 4 }}>
-                    {disturb === 0
-                      ? "0 = Kristallklar (nur abgedeckt)"
-                      : disturb < 6
-                      ? "Leichte bis mittlere Verpixelung"
-                      : "Starke Verpixelung & Konfetti-Filter (Klassisch & spannend)"}
-                  </div>
-                </div>
-
-                {/* Steps Input */}
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <label htmlFor="steps-input" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-                      Aufdeck-Schritte pro Bild: <span style={{ color: "#818cf8" }}>{stepsTotal}</span>
-                    </label>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input
-                      id="steps-input"
-                      type="number"
-                      min="5"
-                      max="80"
-                      value={stepsTotal}
-                      onChange={(e) => {
-                        const val = clamp(parseInt(e.target.value || "20", 10), 5, 80);
-                        setStepsTotal(val);
-                        stateRef.current.stepsTotal = val;
-                        publishSync("ACTION_EXECUTE");
-                      }}
-                      style={{ width: 80 }}
-                    />
-                    <div style={{ display: "flex", gap: 4 }}>
-                      {[15, 20, 25, 30].map((val) => (
+                      {files.length > 7 && (
                         <button
-                          key={val}
-                          type="button"
-                          onClick={() => {
-                            setStepsTotal(val);
-                            stateRef.current.stepsTotal = val;
-                            publishSync("ACTION_EXECUTE");
-                          }}
+                          onClick={() => setShowPreviewModal(true)}
                           style={{
-                            padding: "4px 8px",
-                            fontSize: "0.8rem",
-                            background: stepsTotal === val ? "#4f46e5" : "#1e293b",
+                            width: 80,
+                            height: 80,
+                            borderRadius: 10,
+                            background: "rgba(30, 41, 59, 0.8)",
+                            border: "1px dashed rgba(255,255,255,0.25)",
+                            color: "#94a3b8",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                            flexShrink: 0,
+                            padding: 4,
+                            textAlign: "center",
                           }}
                         >
-                          {val}
+                          <span style={{ fontSize: "1.1rem", marginBottom: 2 }}>➕</span>
+                          +{files.length - 7} weitere
                         </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: 4 }}>
-                    Anzahl Tastendrücke (Space), bis das Bild vollständig gelöst ist.
-                  </div>
-                </div>
-
-                {/* Grid resolution / Wedges */}
-                {revealMode !== "WEDGES_RADIAL" ? (
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                      <label htmlFor="tile-input" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-                        Rastergröße: <span style={{ color: "#818cf8" }}>{tileN} × {tileN} ({tileN * tileN} Kacheln)</span>
-                      </label>
-                    </div>
-                    <input
-                      id="tile-input"
-                      type="number"
-                      min="6"
-                      max="40"
-                      value={tileN}
-                      onChange={(e) => {
-                        const val = clamp(parseInt(e.target.value || "18", 10), 6, 40);
-                        setTileN(val);
-                        stateRef.current.tileN = val;
-                        publishSync("ACTION_EXECUTE");
-                      }}
-                      style={{ width: 80 }}
-                    />
-                    <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: 4 }}>
-                      Größe der einzelnen Abdeckkacheln (Standard: 18).
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                      <label htmlFor="wedge-input" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-                        Torten-Segmente: <span style={{ color: "#818cf8" }}>{wedgeSegments}</span>
-                      </label>
-                    </div>
-                    <input
-                      id="wedge-input"
-                      type="number"
-                      min="6"
-                      max="36"
-                      value={wedgeSegments}
-                      onChange={(e) => {
-                        const val = clamp(parseInt(e.target.value || "18", 10), 6, 36);
-                        setWedgeSegments(val);
-                        stateRef.current.wedgeSegments = val;
-                        publishSync("ACTION_EXECUTE");
-                      }}
-                      style={{ width: 80 }}
-                    />
-                    <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: 4 }}>
-                      Anzahl der radialen Kuchenstücke (Standard: 18).
+                      )}
                     </div>
                   </div>
                 )}
 
-                {/* HUD Checkbox */}
-                <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 10 }}>
+                {/* Action Buttons for Images */}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
+                  <button
+                    onClick={() => setShowPreviewModal(true)}
+                    style={{ background: "#252e42", borderColor: "rgba(255,255,255,0.15)" }}
+                  >
+                    🖼️ Alle {files.length} Bilder ansehen & sortieren
+                  </button>
+
+                  <button
+                    onClick={() => setShowSolutionModal(true)}
+                    style={{ background: "#252e42", borderColor: "#6366f1" }}
+                  >
+                    📋 Spielleiter-Lösungsliste
+                  </button>
+
+                  <button
+                    onClick={shuffleFiles}
+                    style={{ background: "#252e42", borderColor: "rgba(255,255,255,0.15)" }}
+                    title="Mischt die Bilderreihenfolge per Zufall"
+                  >
+                    🔀 Reihenfolge zufällig mischen
+                  </button>
+
+                  <button
+                    onClick={() => startScreenFileInputRef.current?.click()}
+                    style={{ background: "#1e293b", borderColor: "#4f46e5" }}
+                    title="Eigene Bilder von deiner Festplatte hinzufügen"
+                  >
+                    ➕ Eigene Bilder hochladen…
+                  </button>
                   <input
-                    id="hud-checkbox"
-                    type="checkbox"
-                    checked={showHud}
-                    onChange={(e) => {
-                      setShowHud(e.target.checked);
-                      stateRef.current.showHud = e.target.checked;
-                      publishSync("ACTION_EXECUTE");
-                    }}
-                    style={{ width: 18, height: 18, accentColor: "#6366f1", cursor: "pointer" }}
+                    ref={startScreenFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    style={{ display: "none" }}
+                    onChange={onAddFiles}
                   />
-                  <label htmlFor="hud-checkbox" style={{ fontSize: "0.9rem", cursor: "pointer" }}>
-                    HUD-Anzeige (Schritt & Punkteinfo auf dem Spielfeld einblenden)
-                  </label>
+
+                  {!isUsingDefaultOnly && (
+                    <button
+                      onClick={resetToDefaultImages}
+                      style={{
+                        background: "transparent",
+                        borderColor: "rgba(239, 68, 68, 0.4)",
+                        color: "#fca5a5",
+                      }}
+                      title="Setzt die Bilderliste zurück auf die 55 mitgelieferten Standardbilder"
+                    >
+                      ↩ Zurück zu Standard-Bildern (55)
+                    </button>
+                  )}
                 </div>
               </div>
-            </div>
 
-            {/* Step 3: Teams */}
-            <div
-              style={{
-                background: "#131826",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: 16,
-                padding: "24px",
-                display: "grid",
-                gap: 16,
-                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.25)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+              {/* Step 2: Game Mode & Rules */}
+              <div
+                style={{
+                  background: "#131826",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: 16,
+                  padding: "24px",
+                  display: "grid",
+                  gap: 20,
+                  boxShadow: "0 4px 24px rgba(0, 0, 0, 0.25)",
+                }}
+              >
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span
@@ -2039,795 +1861,1124 @@ export default function App() {
                         fontWeight: 700,
                       }}
                     >
-                      3
+                      2
                     </span>
-                    <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Teams & Punktestand</h2>
+                    <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Aufdeck-Modus & Effekte</h2>
                   </div>
                   <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: "0.92rem" }}>
-                    Vergib im Spiel Punkte mit den Tasten <kbd>A</kbd>, <kbd>B</kbd>, <kbd>C</kbd>... oder per Mausklick.
+                    Wähle das Muster, in dem die Bilder verdeckt und Schritt für Schritt enthüllt werden.
                   </p>
                 </div>
 
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={addTeam} disabled={teams.length >= 8} style={{ background: "#252e42" }}>
-                    ➕ Weiteres Team
-                  </button>
-                  <button onClick={resetScores} style={{ background: "#252e42", color: "#fca5a5" }}>
-                    Punkte auf 0
-                  </button>
+                {/* Mode Selection Cards */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  {/* Mode 1: Random Grid */}
+                  <div
+                    onClick={() => {
+                      setRevealMode("GRID_RANDOM");
+                      stateRef.current.revealMode = "GRID_RANDOM";
+                      publishSync("ACTION_EXECUTE");
+                    }}
+                    style={{
+                      padding: 16,
+                      borderRadius: 12,
+                      background: revealMode === "GRID_RANDOM" ? "rgba(99, 102, 241, 0.15)" : "#181f30",
+                      border:
+                        revealMode === "GRID_RANDOM"
+                          ? "2px solid #6366f1"
+                          : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <strong style={{ fontSize: "1rem", color: revealMode === "GRID_RANDOM" ? "#fff" : "#cbd5e1" }}>
+                        🔲 Zufälliges Raster
+                      </strong>
+                      {revealMode === "GRID_RANDOM" && (
+                        <span style={{ fontSize: "0.75rem", background: "#4f46e5", padding: "2px 8px", borderRadius: 10, color: "#fff" }}>
+                          Aktiv
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ margin: 0, fontSize: "0.84rem", color: "#94a3b8", lineHeight: 1.4 }}>
+                      Klassisches Dalli-Klick-Feeling: Kacheln ploppen an zufälligen Positionen auf.
+                    </p>
+                  </div>
+
+                  {/* Mode 2: Radial Wedges */}
+                  <div
+                    onClick={() => {
+                      setRevealMode("WEDGES_RADIAL");
+                      stateRef.current.revealMode = "WEDGES_RADIAL";
+                      publishSync("ACTION_EXECUTE");
+                    }}
+                    style={{
+                      padding: 16,
+                      borderRadius: 12,
+                      background: revealMode === "WEDGES_RADIAL" ? "rgba(99, 102, 241, 0.15)" : "#181f30",
+                      border:
+                        revealMode === "WEDGES_RADIAL"
+                          ? "2px solid #6366f1"
+                          : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <strong style={{ fontSize: "1rem", color: revealMode === "WEDGES_RADIAL" ? "#fff" : "#cbd5e1" }}>
+                        🍰 Tortenstücke (Radial)
+                      </strong>
+                      {revealMode === "WEDGES_RADIAL" && (
+                        <span style={{ fontSize: "0.75rem", background: "#4f46e5", padding: "2px 8px", borderRadius: 10, color: "#fff" }}>
+                          Aktiv
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ margin: 0, fontSize: "0.84rem", color: "#94a3b8", lineHeight: 1.4 }}>
+                      Enthüllung kreisförmig wie bei einer Uhr oder Torte im Zufallsmuster.
+                    </p>
+                  </div>
+
+                  {/* Mode 3: Spiral */}
+                  <div
+                    onClick={() => {
+                      setRevealMode("SPIRAL_GRID");
+                      stateRef.current.revealMode = "SPIRAL_GRID";
+                      publishSync("ACTION_EXECUTE");
+                    }}
+                    style={{
+                      padding: 16,
+                      borderRadius: 12,
+                      background: revealMode === "SPIRAL_GRID" ? "rgba(99, 102, 241, 0.15)" : "#181f30",
+                      border:
+                        revealMode === "SPIRAL_GRID"
+                          ? "2px solid #6366f1"
+                          : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <strong style={{ fontSize: "1rem", color: revealMode === "SPIRAL_GRID" ? "#fff" : "#cbd5e1" }}>
+                        🌀 Spirale
+                      </strong>
+                      {revealMode === "SPIRAL_GRID" && (
+                        <span style={{ fontSize: "0.75rem", background: "#4f46e5", padding: "2px 8px", borderRadius: 10, color: "#fff" }}>
+                          Aktiv
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ margin: 0, fontSize: "0.84rem", color: "#94a3b8", lineHeight: 1.4 }}>
+                      Kacheln decken das Bild spiralförmig von außen nach innen (oder umgekehrt) auf.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Spiral Direction Sub-option */}
+                {revealMode === "SPIRAL_GRID" && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#181f30", padding: "10px 16px", borderRadius: 8 }}>
+                    <span style={{ fontSize: "0.9rem", color: "#cbd5e1" }}>Spiralrichtung:</span>
+                    <select
+                      value={spiralDirection}
+                      onChange={(e) => {
+                        setSpiralDirection(e.target.value);
+                        stateRef.current.spiralDirection = e.target.value;
+                        publishSync("ACTION_EXECUTE");
+                      }}
+                    >
+                      <option value="outside-in">Von Außen nach Innen</option>
+                      <option value="inside-out">Von Innen nach Außen</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Slider Controls */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                    gap: 18,
+                    background: "rgba(15, 23, 42, 0.5)",
+                    padding: 16,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  {/* Disturb Slider */}
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <label htmlFor="disturb-slider" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                        Störgrad & Verpixelung: <span style={{ color: "#818cf8" }}>{disturb} / 10</span>
+                      </label>
+                    </div>
+                    <input
+                      id="disturb-slider"
+                      type="range"
+                      min="0"
+                      max="10"
+                      value={disturb}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setDisturb(val);
+                        stateRef.current.disturb = val;
+                        publishSync("ACTION_EXECUTE");
+                      }}
+                      style={{ width: "100%" }}
+                    />
+                    <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: 4 }}>
+                      {disturb === 0
+                        ? "0 = Kristallklar (nur abgedeckt)"
+                        : disturb < 6
+                        ? "Leichte bis mittlere Verpixelung"
+                        : "Starke Verpixelung & Konfetti-Filter (Klassisch & spannend)"}
+                    </div>
+                  </div>
+
+                  {/* Steps Input */}
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <label htmlFor="steps-input" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                        Aufdeck-Schritte pro Bild: <span style={{ color: "#818cf8" }}>{stepsTotal}</span>
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input
+                        id="steps-input"
+                        type="number"
+                        min="5"
+                        max="80"
+                        value={stepsTotal}
+                        onChange={(e) => {
+                          const val = clamp(parseInt(e.target.value || "20", 10), 5, 80);
+                          setStepsTotal(val);
+                          stateRef.current.stepsTotal = val;
+                          publishSync("ACTION_EXECUTE");
+                        }}
+                        style={{ width: 80 }}
+                      />
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {[15, 20, 25, 30].map((val) => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => {
+                              setStepsTotal(val);
+                              stateRef.current.stepsTotal = val;
+                              publishSync("ACTION_EXECUTE");
+                            }}
+                            style={{
+                              padding: "4px 8px",
+                              fontSize: "0.8rem",
+                              background: stepsTotal === val ? "#4f46e5" : "#1e293b",
+                            }}
+                          >
+                            {val}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: 4 }}>
+                      Anzahl Tastendrücke (Space), bis das Bild vollständig gelöst ist.
+                    </div>
+                  </div>
+
+                  {/* Grid resolution / Wedges */}
+                  {revealMode !== "WEDGES_RADIAL" ? (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                        <label htmlFor="tile-input" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                          Rastergröße: <span style={{ color: "#818cf8" }}>{tileN} × {tileN} ({tileN * tileN} Kacheln)</span>
+                        </label>
+                      </div>
+                      <input
+                        id="tile-input"
+                        type="number"
+                        min="6"
+                        max="40"
+                        value={tileN}
+                        onChange={(e) => {
+                          const val = clamp(parseInt(e.target.value || "18", 10), 6, 40);
+                          setTileN(val);
+                          stateRef.current.tileN = val;
+                          publishSync("ACTION_EXECUTE");
+                        }}
+                        style={{ width: 80 }}
+                      />
+                      <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: 4 }}>
+                        Größe der einzelnen Abdeckkacheln (Standard: 18).
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                        <label htmlFor="wedge-input" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                          Torten-Segmente: <span style={{ color: "#818cf8" }}>{wedgeSegments}</span>
+                        </label>
+                      </div>
+                      <input
+                        id="wedge-input"
+                        type="number"
+                        min="6"
+                        max="36"
+                        value={wedgeSegments}
+                        onChange={(e) => {
+                          const val = clamp(parseInt(e.target.value || "18", 10), 6, 36);
+                          setWedgeSegments(val);
+                          stateRef.current.wedgeSegments = val;
+                          publishSync("ACTION_EXECUTE");
+                        }}
+                        style={{ width: 80 }}
+                      />
+                      <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: 4 }}>
+                        Anzahl der radialen Kuchenstücke (Standard: 18).
+                      </div>
+                    </div>
+                  )}
+
+                  {/* HUD Checkbox */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 10 }}>
+                    <input
+                      id="hud-checkbox"
+                      type="checkbox"
+                      checked={showHud}
+                      onChange={(e) => {
+                        setShowHud(e.target.checked);
+                        stateRef.current.showHud = e.target.checked;
+                        publishSync("ACTION_EXECUTE");
+                      }}
+                      style={{ width: 18, height: 18, accentColor: "#6366f1", cursor: "pointer" }}
+                    />
+                    <label htmlFor="hud-checkbox" style={{ fontSize: "0.9rem", cursor: "pointer" }}>
+                      HUD-Anzeige (Schritt & Punkteinfo auf dem Spielfeld einblenden)
+                    </label>
+                  </div>
                 </div>
               </div>
 
-              {/* Team Cards Grid */}
+              {/* Step 3: Teams */}
               <div
                 style={{
+                  background: "#131826",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: 16,
+                  padding: "24px",
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-                  gap: 12,
+                  gap: 16,
+                  boxShadow: "0 4px 24px rgba(0, 0, 0, 0.25)",
                 }}
               >
-                {teams.map((t, i) => (
-                  <div
-                    key={t.name}
-                    style={{
-                      background: "rgba(15, 23, 42, 0.7)",
-                      border: "1px solid rgba(255, 255, 255, 0.1)",
-                      borderRadius: 12,
-                      padding: "12px 16px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: "0.82rem", color: "#94a3b8" }}>Taste <kbd>{t.name}</kbd></div>
-                      <div style={{ fontSize: "1.1rem", fontWeight: 700, marginTop: 2 }}>
-                        Team {t.name}
-                      </div>
-                      <div style={{ fontSize: "1.4rem", fontWeight: 900, color: "#4ade80" }}>
-                        {t.score} <span style={{ fontSize: "0.8rem", color: "#94a3b8" }}>Pkt</span>
-                      </div>
-                    </div>
-                    {teams.length > 1 && (
-                      <button
-                        onClick={() => removeTeam(i)}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span
                         style={{
-                          background: "transparent",
-                          border: "none",
-                          color: "#64748b",
-                          padding: 4,
-                          cursor: "pointer",
-                          fontSize: "14px",
+                          background: "#4f46e5",
+                          color: "#fff",
+                          width: 26,
+                          height: 26,
+                          borderRadius: "50%",
+                          display: "inline-grid",
+                          placeItems: "center",
+                          fontSize: "0.85rem",
+                          fontWeight: 700,
                         }}
-                        title="Team entfernen"
                       >
-                        ✕
-                      </button>
-                    )}
+                        3
+                      </span>
+                      <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Teams & Punktestand</h2>
+                    </div>
+                    <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: "0.92rem" }}>
+                      Vergib im Spiel Punkte mit den Tasten <kbd>A</kbd>, <kbd>B</kbd>, <kbd>C</kbd>... oder per Mausklick.
+                    </p>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            {/* Step 4: Start or Resume CTA Button */}
-            <div
-              style={{
-                background: "linear-gradient(180deg, #1e1b4b 0%, #131826 100%)",
-                border: "1px solid rgba(99, 102, 241, 0.4)",
-                borderRadius: 20,
-                padding: "28px 24px",
-                display: "grid",
-                placeItems: "center",
-                textAlign: "center",
-                gap: 16,
-                boxShadow: "0 10px 40px rgba(79, 70, 229, 0.2)",
-              }}
-            >
-              <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center" }}>
-                {/* Main Action: Resume or Start */}
-                {hasStartedBefore ? (
-                  <>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={addTeam} disabled={teams.length >= 8} style={{ background: "#252e42" }}>
+                      ➕ Weiteres Team
+                    </button>
+                    <button onClick={resetScores} style={{ background: "#252e42", color: "#fca5a5" }}>
+                      Punkte auf 0
+                    </button>
+                  </div>
+                </div>
+
+                {/* Team Cards Grid */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  {teams.map((t, i) => (
+                    <div
+                      key={t.name}
+                      style={{
+                        background: "rgba(15, 23, 42, 0.7)",
+                        border: "1px solid rgba(255, 255, 255, 0.1)",
+                        borderRadius: 12,
+                        padding: "12px 16px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: "0.82rem", color: "#94a3b8" }}>Taste <kbd>{t.name}</kbd></div>
+                        <div style={{ fontSize: "1.1rem", fontWeight: 700, marginTop: 2 }}>
+                          Team {t.name}
+                        </div>
+                        <div style={{ fontSize: "1.4rem", fontWeight: 900, color: "#4ade80" }}>
+                          {t.score} <span style={{ fontSize: "0.8rem", color: "#94a3b8" }}>Pkt</span>
+                        </div>
+                      </div>
+                      {teams.length > 1 && (
+                        <button
+                          onClick={() => removeTeam(i)}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "#64748b",
+                            padding: 4,
+                            cursor: "pointer",
+                            fontSize: "14px",
+                          }}
+                          title="Team entfernen"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 4: Start or Resume CTA Button */}
+              <div
+                style={{
+                  background: "linear-gradient(180deg, #1e1b4b 0%, #131826 100%)",
+                  border: "1px solid rgba(99, 102, 241, 0.4)",
+                  borderRadius: 20,
+                  padding: "28px 24px",
+                  display: "grid",
+                  placeItems: "center",
+                  textAlign: "center",
+                  gap: 16,
+                  boxShadow: "0 10px 40px rgba(79, 70, 229, 0.2)",
+                }}
+              >
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center" }}>
+                  {/* Main Action: Resume or Start */}
+                  {hasStartedBefore ? (
+                    <>
+                      <button
+                        onClick={resumeGame}
+                        disabled={!canStart}
+                        className="pulse-button"
+                        style={{
+                          background: "linear-gradient(135deg, #16a34a 0%, #059669 100%)",
+                          border: "none",
+                          borderRadius: 14,
+                          padding: "16px 40px",
+                          fontSize: "1.3rem",
+                          fontWeight: 800,
+                          color: "#fff",
+                          cursor: canStart ? "pointer" : "not-allowed",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 12,
+                          boxShadow: "0 6px 20px rgba(34, 197, 94, 0.45)",
+                        }}
+                      >
+                        <span>▶️</span>
+                        <span>Spiel Fortsetzen (Bild {current + 1} von {files.length})</span>
+                      </button>
+
+                      <button
+                        onClick={startNewGameFromBeginning}
+                        disabled={!canStart}
+                        style={{
+                          background: "#1e293b",
+                          borderColor: "rgba(255,255,255,0.2)",
+                          borderRadius: 14,
+                          padding: "16px 24px",
+                          fontSize: "1.05rem",
+                          fontWeight: 600,
+                          color: "#cbd5e1",
+                          cursor: canStart ? "pointer" : "not-allowed",
+                        }}
+                        title="Setzt das Bild auf Bild 1 zurück"
+                      >
+                        🔄 Von Bild 1 neu starten
+                      </button>
+                    </>
+                  ) : (
                     <button
-                      onClick={resumeGame}
+                      onClick={startNewGameFromBeginning}
                       disabled={!canStart}
                       className="pulse-button"
                       style={{
-                        background: "linear-gradient(135deg, #16a34a 0%, #059669 100%)",
+                        background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
                         border: "none",
                         borderRadius: 14,
-                        padding: "16px 40px",
-                        fontSize: "1.3rem",
+                        padding: "16px 48px",
+                        fontSize: "1.35rem",
                         fontWeight: 800,
                         color: "#fff",
                         cursor: canStart ? "pointer" : "not-allowed",
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 12,
-                        boxShadow: "0 6px 20px rgba(34, 197, 94, 0.45)",
+                        boxShadow: "0 6px 20px rgba(99, 102, 241, 0.5)",
                       }}
                     >
-                      <span>▶️</span>
-                      <span>Spiel Fortsetzen (Bild {current + 1} von {files.length})</span>
+                      <span>🚀</span>
+                      <span>Spiel Jetzt Starten</span>
                     </button>
-
-                    <button
-                      onClick={startNewGameFromBeginning}
-                      disabled={!canStart}
-                      style={{
-                        background: "#1e293b",
-                        borderColor: "rgba(255,255,255,0.2)",
-                        borderRadius: 14,
-                        padding: "16px 24px",
-                        fontSize: "1.05rem",
-                        fontWeight: 600,
-                        color: "#cbd5e1",
-                        cursor: canStart ? "pointer" : "not-allowed",
-                      }}
-                      title="Setzt das Bild auf Bild 1 zurück"
-                    >
-                      🔄 Von Bild 1 neu starten
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={startNewGameFromBeginning}
-                    disabled={!canStart}
-                    className="pulse-button"
-                    style={{
-                      background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
-                      border: "none",
-                      borderRadius: 14,
-                      padding: "16px 48px",
-                      fontSize: "1.35rem",
-                      fontWeight: 800,
-                      color: "#fff",
-                      cursor: canStart ? "pointer" : "not-allowed",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 12,
-                      boxShadow: "0 6px 20px rgba(99, 102, 241, 0.5)",
-                    }}
-                  >
-                    <span>🚀</span>
-                    <span>Spiel Jetzt Starten</span>
-                  </button>
-                )}
-              </div>
-
-              <div style={{ color: "#94a3b8", fontSize: "0.95rem" }}>
-                🎮 <strong>{files.length} Bilder</strong> • Aktuell bei: <strong>Bild {current + 1} ({currentSolutionName || "—"})</strong> • Modus: <strong>{revealModeLabel}</strong> • <strong>{teams.length} Teams ({teams.map((t) => t.name).join(", ")})</strong>
-              </div>
-
-              {/* Controls Cheatsheet Bar */}
-              <div
-                style={{
-                  background: "rgba(15, 23, 42, 0.75)",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  borderRadius: 12,
-                  padding: "10px 18px",
-                  display: "flex",
-                  flexWrap: "wrap",
-                  justifyContent: "center",
-                  gap: "12px 20px",
-                  fontSize: "0.82rem",
-                  color: "#cbd5e1",
-                }}
-              >
-                <span><kbd>Space</kbd> Schritt aufdecken</span>
-                <span><kbd>A</kbd> / <kbd>B</kbd> Punkte vergeben</span>
-                <span><kbd>L</kbd> Sofort auflösen</span>
-                <span><kbd>S</kbd> Spicker / Lösung</span>
-                <span><kbd>N</kbd> Nächstes Bild</span>
-                <span><kbd>R</kbd> Bild neu starten</span>
-                <span><kbd>F</kbd> Vollbild</span>
-                <span><kbd>Strg</kbd>+<kbd>Z</kbd> Punkte rückgängig</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Modal 1: Image Preview & Drag/Drop Order */}
-          {showPreviewModal && (
-            <div
-              style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: "rgba(0, 0, 0, 0.85)",
-                backdropFilter: "blur(6px)",
-                zIndex: 100,
-                display: "grid",
-                placeItems: "center",
-                padding: 24,
-              }}
-            >
-              <div
-                style={{
-                  background: "#131826",
-                  border: "1px solid rgba(255, 255, 255, 0.15)",
-                  borderRadius: 16,
-                  width: "min(100%, 880px)",
-                  maxHeight: "90vh",
-                  display: "flex",
-                  flexDirection: "column",
-                  boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
-                }}
-              >
-                <div
-                  style={{
-                    padding: "20px 24px",
-                    borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 12,
-                  }}
-                >
-                  <div>
-                    <h2 style={{ margin: 0, fontSize: "1.3rem" }}>
-                      Bilder-Vorschau & Reihenfolge ({files.length} Bilder)
-                    </h2>
-                    <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#94a3b8" }}>
-                      Klicke auf ein Bild, um direkt dorthin zu springen, oder verschiebe es per Drag & Drop.
-                    </p>
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={shuffleFiles} style={{ background: "#1e293b" }}>
-                      🔀 Zufällig mischen
-                    </button>
-                    <button
-                      onClick={() => setShowPreviewModal(false)}
-                      style={{ background: "#4f46e5", color: "#fff", border: "none" }}
-                    >
-                      Fertig
-                    </button>
-                  </div>
+                  )}
                 </div>
 
+                <div style={{ color: "#94a3b8", fontSize: "0.95rem" }}>
+                  🎮 <strong>{files.length} Bilder</strong> • Aktuell bei: <strong>Bild {current + 1} ({currentSolutionName || "—"})</strong> • Modus: <strong>{revealModeLabel}</strong> • <strong>{teams.length} Teams ({teams.map((t) => t.name).join(", ")})</strong>
+                </div>
+
+                {/* Controls Cheatsheet Bar */}
                 <div
                   style={{
-                    padding: 24,
-                    overflowY: "auto",
+                    background: "rgba(15, 23, 42, 0.75)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    borderRadius: 12,
+                    padding: "10px 18px",
                     display: "flex",
                     flexWrap: "wrap",
-                    gap: 16,
-                    alignContent: "flex-start",
+                    justifyContent: "center",
+                    gap: "12px 20px",
+                    fontSize: "0.82rem",
+                    color: "#cbd5e1",
                   }}
                 >
-                  {files.length === 0 && (
-                    <div style={{ textAlign: "center", width: "100%", padding: "40px 0", color: "#94a3b8" }}>
-                      <p>Keine Bilder mehr vorhanden.</p>
-                      <button onClick={resetToDefaultImages} style={{ background: "#4f46e5", color: "#fff", border: "none", marginTop: 12 }}>
-                        Standardbilder laden
+                  <span><kbd>Space</kbd> Schritt aufdecken</span>
+                  <span><kbd>A</kbd> / <kbd>B</kbd> Punkte vergeben</span>
+                  <span><kbd>L</kbd> Sofort auflösen</span>
+                  <span><kbd>S</kbd> Spicker / Lösung</span>
+                  <span><kbd>N</kbd> Nächstes Bild</span>
+                  <span><kbd>R</kbd> Bild neu starten</span>
+                  <span><kbd>F</kbd> Vollbild</span>
+                  <span><kbd>Strg</kbd>+<kbd>Z</kbd> Punkte rückgängig</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal 1: Image Preview & Drag/Drop Order */}
+            {showPreviewModal && (
+              <div
+                style={{
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: "rgba(0, 0, 0, 0.85)",
+                  backdropFilter: "blur(6px)",
+                  zIndex: 100,
+                  display: "grid",
+                  placeItems: "center",
+                  padding: 24,
+                }}
+              >
+                <div
+                  style={{
+                    background: "#131826",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    borderRadius: 16,
+                    width: "min(100%, 880px)",
+                    maxHeight: "90vh",
+                    display: "flex",
+                    flexDirection: "column",
+                    boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "20px 24px",
+                      borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 12,
+                    }}
+                  >
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: "1.3rem" }}>
+                        Bilder-Vorschau & Reihenfolge ({files.length} Bilder)
+                      </h2>
+                      <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#94a3b8" }}>
+                        Klicke auf ein Bild, um direkt dorthin zu springen, oder verschiebe es per Drag & Drop.
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={shuffleFiles} style={{ background: "#1e293b" }}>
+                        🔀 Zufällig mischen
+                      </button>
+                      <button
+                        onClick={() => setShowPreviewModal(false)}
+                        style={{ background: "#4f46e5", color: "#fff", border: "none" }}
+                      >
+                        Fertig
                       </button>
                     </div>
-                  )}
-                  {files.map((f, i) => {
-                    const isSelected = i === current;
-                    return (
-                      <div
-                        key={f.url + i}
-                        draggable
-                        onClick={() => selectImage(i)}
-                        onDragStart={(e) => {
-                          e.dataTransfer.effectAllowed = "move";
-                          setDraggedIdx(i);
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          if (draggedIdx === null || draggedIdx === i) return;
-                          setFiles((fs) => {
-                            const arr = [...fs];
-                            const item = arr.splice(draggedIdx, 1)[0];
-                            arr.splice(i, 0, item);
-                            stateRef.current.files = arr;
-                            publishSync("ACTION_EXECUTE");
-                            return arr;
-                          });
-                          setDraggedIdx(i);
-                        }}
-                        onDragEnd={() => setDraggedIdx(null)}
-                        style={{
-                          position: "relative",
-                          width: 140,
-                          height: 140,
-                          borderRadius: 10,
-                          overflow: "hidden",
-                          border: isSelected
-                            ? "2px solid #4ade80"
-                            : draggedIdx === i
-                            ? "2px dashed #6366f1"
-                            : "2px solid rgba(255,255,255,0.1)",
-                          opacity: draggedIdx === i ? 0.4 : 1,
-                          cursor: "grab",
-                          background: "#090d16",
-                          transition: "border-color 0.2s",
-                        }}
-                        title={`Bild ${i + 1}: ${formatImageName(f.name)}`}
-                      >
-                        <img
-                          src={f.url}
-                          alt={f.name}
-                          style={{ width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }}
-                        />
-                        {isSelected && (
-                          <span
+                  </div>
+
+                  <div
+                    style={{
+                      padding: 24,
+                      overflowY: "auto",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 16,
+                      alignContent: "flex-start",
+                    }}
+                  >
+                    {files.length === 0 && (
+                      <div style={{ textAlign: "center", width: "100%", padding: "40px 0", color: "#94a3b8" }}>
+                        <p>Keine Bilder mehr vorhanden.</p>
+                        <button onClick={resetToDefaultImages} style={{ background: "#4f46e5", color: "#fff", border: "none", marginTop: 12 }}>
+                          Standardbilder laden
+                        </button>
+                      </div>
+                    )}
+                    {files.map((f, i) => {
+                      const isSelected = i === current;
+                      return (
+                        <div
+                          key={f.url + i}
+                          draggable
+                          onClick={() => selectImage(i)}
+                          onDragStart={(e) => {
+                            e.dataTransfer.effectAllowed = "move";
+                            setDraggedIdx(i);
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            if (draggedIdx === null || draggedIdx === i) return;
+                            setFiles((fs) => {
+                              const arr = [...fs];
+                              const item = arr.splice(draggedIdx, 1)[0];
+                              arr.splice(i, 0, item);
+                              stateRef.current.files = arr;
+                              publishSync("ACTION_EXECUTE");
+                              return arr;
+                            });
+                            setDraggedIdx(i);
+                          }}
+                          onDragEnd={() => setDraggedIdx(null)}
+                          style={{
+                            position: "relative",
+                            width: 140,
+                            height: 140,
+                            borderRadius: 10,
+                            overflow: "hidden",
+                            border: isSelected
+                              ? "2px solid #4ade80"
+                              : draggedIdx === i
+                              ? "2px dashed #6366f1"
+                              : "2px solid rgba(255,255,255,0.1)",
+                            opacity: draggedIdx === i ? 0.4 : 1,
+                            cursor: "grab",
+                            background: "#090d16",
+                            transition: "border-color 0.2s",
+                          }}
+                          title={`Bild ${i + 1}: ${formatImageName(f.name)}`}
+                        >
+                          <img
+                            src={f.url}
+                            alt={f.name}
+                            style={{ width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }}
+                          />
+                          {isSelected && (
+                            <span
+                              style={{
+                                position: "absolute",
+                                top: 6,
+                                left: 6,
+                                background: "#4ade80",
+                                color: "#000",
+                                fontSize: "10px",
+                                fontWeight: "bold",
+                                padding: "2px 6px",
+                                borderRadius: 4,
+                              }}
+                            >
+                              AKTUELL
+                            </span>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const updated = files.filter((_, idx) => idx !== i);
+                              setFiles(updated);
+                              stateRef.current.files = updated;
+                              publishSync("ACTION_EXECUTE");
+                            }}
                             style={{
                               position: "absolute",
                               top: 6,
-                              left: 6,
-                              background: "#4ade80",
-                              color: "#000",
-                              fontSize: "10px",
-                              fontWeight: "bold",
-                              padding: "2px 6px",
-                              borderRadius: 4,
+                              right: 6,
+                              background: "rgba(0,0,0,0.75)",
+                              color: "#f87171",
+                              border: "1px solid rgba(255,255,255,0.1)",
+                              borderRadius: "50%",
+                              width: 26,
+                              height: 26,
+                              padding: 0,
+                              display: "grid",
+                              placeItems: "center",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              lineHeight: 1,
+                            }}
+                            title="Bild entfernen"
+                          >
+                            ✕
+                          </button>
+                          <div
+                            style={{
+                              position: "absolute",
+                              bottom: 0,
+                              left: 0,
+                              right: 0,
+                              background: "rgba(0,0,0,0.75)",
+                              color: "#fff",
+                              fontSize: "11px",
+                              padding: "4px 8px",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
                             }}
                           >
-                            AKTUELL
-                          </span>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const updated = files.filter((_, idx) => idx !== i);
-                            setFiles(updated);
-                            stateRef.current.files = updated;
-                            publishSync("ACTION_EXECUTE");
-                          }}
-                          style={{
-                            position: "absolute",
-                            top: 6,
-                            right: 6,
-                            background: "rgba(0,0,0,0.75)",
-                            color: "#f87171",
-                            border: "1px solid rgba(255,255,255,0.1)",
-                            borderRadius: "50%",
-                            width: 26,
-                            height: 26,
-                            padding: 0,
-                            display: "grid",
-                            placeItems: "center",
-                            cursor: "pointer",
-                            fontSize: "12px",
-                            lineHeight: 1,
-                          }}
-                          title="Bild entfernen"
-                        >
-                          ✕
-                        </button>
-                        <div
-                          style={{
-                            position: "absolute",
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            background: "rgba(0,0,0,0.75)",
-                            color: "#fff",
-                            fontSize: "11px",
-                            padding: "4px 8px",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {i + 1}. {formatImageName(f.name)}
+                            {i + 1}. {formatImageName(f.name)}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
 
-                <div
-                  style={{
-                    padding: "12px 24px",
-                    borderTop: "1px solid rgba(255, 255, 255, 0.1)",
-                    color: "#94a3b8",
-                    fontSize: "0.88rem",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 8,
-                  }}
-                >
-                  <span>💡 Klicke auf ein Bild, um es als nächstes Bild festzulegen, oder ziehe es per Drag & Drop.</span>
-                  {!isUsingDefaultOnly && (
-                    <button
-                      onClick={resetToDefaultImages}
-                      style={{ fontSize: "0.8rem", background: "transparent", color: "#fca5a5", border: "1px solid rgba(239, 68, 68, 0.3)" }}
-                    >
-                      ↩ Auf Standard-Bilder (55) zurücksetzen
-                    </button>
-                  )}
+                  <div
+                    style={{
+                      padding: "12px 24px",
+                      borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+                      color: "#94a3b8",
+                      fontSize: "0.88rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 8,
+                    }}
+                  >
+                    <span>💡 Klicke auf ein Bild, um es als nächstes Bild festzulegen, oder ziehe es per Drag & Drop.</span>
+                    {!isUsingDefaultOnly && (
+                      <button
+                        onClick={resetToDefaultImages}
+                        style={{ fontSize: "0.8rem", background: "transparent", color: "#fca5a5", border: "1px solid rgba(239, 68, 68, 0.3)" }}
+                      >
+                        ↩ Auf Standard-Bilder (55) zurücksetzen
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Modal 2: Solution List / Cheat Sheet for Presenter */}
-          {showSolutionModal && (
-            <div
-              style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: "rgba(0, 0, 0, 0.88)",
-                backdropFilter: "blur(6px)",
-                zIndex: 110,
-                display: "grid",
-                placeItems: "center",
-                padding: 24,
-              }}
-            >
+            {/* Modal 2: Solution List / Cheat Sheet for Presenter */}
+            {showSolutionModal && (
               <div
                 style={{
-                  background: "#131826",
-                  border: "1px solid rgba(255, 255, 255, 0.15)",
-                  borderRadius: 16,
-                  width: "min(100%, 940px)",
-                  maxHeight: "90vh",
-                  display: "flex",
-                  flexDirection: "column",
-                  boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: "rgba(0, 0, 0, 0.88)",
+                  backdropFilter: "blur(6px)",
+                  zIndex: 110,
+                  display: "grid",
+                  placeItems: "center",
+                  padding: 24,
                 }}
               >
                 <div
                   style={{
-                    padding: "20px 24px",
-                    borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+                    background: "#131826",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    borderRadius: 16,
+                    width: "min(100%, 940px)",
+                    maxHeight: "90vh",
                     display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 12,
+                    flexDirection: "column",
+                    boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
                   }}
                 >
-                  <div>
-                    <h2 style={{ margin: 0, fontSize: "1.3rem", display: "flex", alignItems: "center", gap: 8 }}>
-                      <span>📋</span>
-                      <span>Spielleiter-Lösungsliste ({files.length} Bilder)</span>
-                    </h2>
-                    <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#94a3b8" }}>
-                      Reihenfolge & Lösungsbegriffe für den Moderator
-                    </p>
+                  <div
+                    style={{
+                      padding: "20px 24px",
+                      borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 12,
+                    }}
+                  >
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: "1.3rem", display: "flex", alignItems: "center", gap: 8 }}>
+                        <span>📋</span>
+                        <span>Spielleiter-Lösungsliste ({files.length} Bilder)</span>
+                      </h2>
+                      <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#94a3b8" }}>
+                        Reihenfolge & deutsche Lösungsbegriffe für den Moderator
+                      </p>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button
+                        onClick={copySolutionList}
+                        style={{ background: copiedNotification ? "#059669" : "#1e293b", fontSize: "0.85rem" }}
+                      >
+                        {copiedNotification ? "✅ Kopiert!" : "📋 Liste kopieren"}
+                      </button>
+                      <button
+                        onClick={() => window.print()}
+                        style={{ background: "#4f46e5", color: "#fff", border: "none", fontSize: "0.85rem" }}
+                      >
+                        🖨️ Drucken / PDF
+                      </button>
+                      <button
+                        onClick={() => setShowSolutionModal(false)}
+                        style={{ background: "#252e42", fontSize: "0.85rem" }}
+                      >
+                        Schließen
+                      </button>
+                    </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <button
-                      onClick={copySolutionList}
-                      style={{ background: copiedNotification ? "#059669" : "#1e293b", fontSize: "0.85rem" }}
-                    >
-                      {copiedNotification ? "✅ Kopiert!" : "📋 Liste kopieren"}
-                    </button>
-                    <button
-                      onClick={() => window.print()}
-                      style={{ background: "#4f46e5", color: "#fff", border: "none", fontSize: "0.85rem" }}
-                    >
-                      🖨️ Drucken / PDF
-                    </button>
+                  <div
+                    style={{
+                      padding: 24,
+                      overflowY: "auto",
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    {files.map((f, i) => (
+                      <div
+                        key={f.url + i}
+                        style={{
+                          background: "#181f30",
+                          border: "1px solid rgba(255, 255, 255, 0.08)",
+                          borderRadius: 10,
+                          padding: 10,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 48,
+                            height: 48,
+                            borderRadius: 8,
+                            overflow: "hidden",
+                            background: "#000",
+                            flexShrink: 0,
+                            border: "1px solid rgba(255,255,255,0.1)",
+                          }}
+                        >
+                          <img
+                            src={f.url}
+                            alt={f.name}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: "0.75rem", color: "#818cf8", fontWeight: 700 }}>
+                            #{i + 1}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "0.95rem",
+                              fontWeight: 700,
+                              color: "#f8fafc",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                            title={formatImageName(f.name)}
+                          >
+                            {formatImageName(f.name)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div
+                    style={{
+                      padding: "12px 24px",
+                      borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+                      color: "#94a3b8",
+                      fontSize: "0.85rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span>💡 Tipp: Du kannst diese Liste vorab ausdrucken oder auf deinem Smartphone öffnen.</span>
                     <button
                       onClick={() => setShowSolutionModal(false)}
-                      style={{ background: "#252e42", fontSize: "0.85rem" }}
+                      style={{ fontSize: "0.8rem", background: "transparent", color: "#cbd5e1" }}
                     >
                       Schließen
                     </button>
                   </div>
                 </div>
-
-                <div
-                  style={{
-                    padding: 24,
-                    overflowY: "auto",
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-                    gap: 12,
-                  }}
-                >
-                  {files.map((f, i) => (
-                    <div
-                      key={f.url + i}
-                      style={{
-                        background: "#181f30",
-                        border: "1px solid rgba(255, 255, 255, 0.08)",
-                        borderRadius: 10,
-                        padding: 10,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 48,
-                          height: 48,
-                          borderRadius: 8,
-                          overflow: "hidden",
-                          background: "#000",
-                          flexShrink: 0,
-                          border: "1px solid rgba(255,255,255,0.1)",
-                        }}
-                      >
-                        <img
-                          src={f.url}
-                          alt={f.name}
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
-                      </div>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: "0.75rem", color: "#818cf8", fontWeight: 700 }}>
-                          #{i + 1}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "0.95rem",
-                            fontWeight: 700,
-                            color: "#f8fafc",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                          title={formatImageName(f.name)}
-                        >
-                          {formatImageName(f.name)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div
-                  style={{
-                    padding: "12px 24px",
-                    borderTop: "1px solid rgba(255, 255, 255, 0.1)",
-                    color: "#94a3b8",
-                    fontSize: "0.85rem",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <span>💡 Tipp: Du kannst diese Liste vorab ausdrucken oder auf deinem Smartphone öffnen.</span>
-                  <button
-                    onClick={() => setShowSolutionModal(false)}
-                    style={{ fontSize: "0.8rem", background: "transparent", color: "#cbd5e1" }}
-                  >
-                    Schließen
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </main>
-      </div>
-    ) : (
-      /* VIEW 3: ACTIVE IN-GAME SCREEN (BEAMER / MAIN) */
-      <div style={{ height: "100vh", display: "grid", gridTemplateRows: "auto 1fr", background: "#0c0e14" }}>
-        <header
-          style={{
-            display: "flex",
-            gap: 12,
-            alignItems: "center",
-            padding: "10px 16px",
-            background: "#0f172a",
-            color: "#fff",
-            borderBottom: "1px solid rgba(255,255,255,0.1)",
-            flexWrap: "wrap",
-            position: "relative",
-            zIndex: 30,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button
-              onClick={() => {
-                setIsGameActive(false);
-                stateRef.current.isGameActive = false;
-                publishSync("ACTION_EXECUTE");
-              }}
-              style={{
-                background: "#1e293b",
-                border: "1px solid rgba(255,255,255,0.15)",
-                color: "#cbd5e1",
-                fontSize: "0.82rem",
-                padding: "4px 10px",
-              }}
-              title="Zurück zum Startbildschirm & Einstellungen"
-            >
-              🏠 Menü
-            </button>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <strong style={{ fontSize: "1.05rem" }}>Dalli Klick</strong>
-              <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                (Bild {current + 1} von {files.length})
-              </span>
-            </div>
-          </div>
-
-          {/* In-Game Action Buttons */}
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={prevStep}>◀ Schritt</button>
-            <button
-              style={{ fontSize: "0.78rem", padding: "4px 10px", background: "#312e81", borderColor: "#6366f1", color: "#e0e7ff" }}
-              onClick={nextStep}
-            >
-              Schritt ▶ (Space)
-            </button>
-            <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={solveRound}>Lösen (L)</button>
-            <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={nextImage}>Nächstes Bild (N)</button>
-            <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={resetRound}>Runde reset (R)</button>
-            <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={() => fileInputRef.current?.click()}>➕ Bilder</button>
-            <input ref={fileInputRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={onAddFiles} />
-          </div>
-
-          {/* Spielleiter Spicker Dropdown Button */}
-          <div style={{ position: "relative" }}>
-            <button
-              onClick={() => setShowCheatPopover(!showCheatPopover)}
-              onMouseEnter={() => setShowCheatPopover(true)}
-              style={{
-                fontSize: "0.8rem",
-                padding: "4px 10px",
-                background: showCheatPopover ? "#312e81" : "#1e293b",
-                borderColor: showCheatPopover ? "#818cf8" : "rgba(255,255,255,0.15)",
-                color: "#e0e7ff",
-              }}
-              title="Zeigt die Lösung für den Spielleiter an (Taste S)"
-            >
-              🕵️‍♂️ Spicker (S)
-            </button>
-
-            {/* Cheat Sheet Popover */}
-            {showCheatPopover && (
-              <div
-                onMouseLeave={() => setShowCheatPopover(false)}
-                style={{
-                  position: "absolute",
-                  top: "100%",
-                  left: 0,
-                  marginTop: 8,
-                  background: "#131826",
-                  border: "1px solid rgba(99, 102, 241, 0.4)",
-                  borderRadius: 12,
-                  padding: 14,
-                  width: 280,
-                  boxShadow: "0 12px 30px rgba(0,0,0,0.6)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                  zIndex: 50,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 6 }}>
-                  <strong style={{ fontSize: "0.85rem", color: "#818cf8" }}>🕵️‍♂️ Spielleiter-Spickzettel</strong>
-                  <button
-                    onClick={() => setShowCheatPopover(false)}
-                    style={{ background: "transparent", border: "none", padding: 2, color: "#64748b", cursor: "pointer" }}
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                {/* Current Image Solution */}
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
-                    {currentFile && (
-                      <img src={currentFile.url} alt={currentFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    )}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: "0.72rem", color: "#4ade80", fontWeight: 700 }}>AKTUELLE LÖSUNG:</div>
-                    <strong style={{ fontSize: "0.95rem", color: "#fff", display: "block", wordBreak: "break-word" }}>
-                      {currentSolutionName || "—"}
-                    </strong>
-                  </div>
-                </div>
-
-                {/* Next Image Teaser */}
-                {nextFile && (
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", borderTop: "1px dashed rgba(255,255,255,0.1)", paddingTop: 8 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
-                      <img src={nextFile.url} alt={nextFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: "0.68rem", color: "#94a3b8" }}>NÄCHSTES BILD:</div>
-                      <span style={{ fontSize: "0.85rem", color: "#cbd5e1", display: "block", wordBreak: "break-word" }}>
-                        {nextSolutionName || "—"}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  onClick={openControllerWindow}
-                  style={{
-                    width: "100%",
-                    marginTop: 4,
-                    fontSize: "0.78rem",
-                    background: "#1e293b",
-                    borderColor: "rgba(255,255,255,0.15)",
-                  }}
-                >
-                  🖥️ Spielleiter-Konsole öffnen
-                </button>
               </div>
             )}
-          </div>
-
-          {/* Right Header Area: Scores & Undo */}
-          <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-            {lastAward && (
+          </main>
+        </div>
+      ) : (
+        /* VIEW 3: ACTIVE IN-GAME SCREEN (BEAMER / MAIN) */
+        <div style={{ height: "100vh", display: "grid", gridTemplateRows: "auto 1fr", background: "#0c0e14" }}>
+          <header
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              padding: "10px 16px",
+              background: "#0f172a",
+              color: "#fff",
+              borderBottom: "1px solid rgba(255,255,255,0.1)",
+              flexWrap: "wrap",
+              position: "relative",
+              zIndex: 30,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <button
-                onClick={undoLastAward}
+                onClick={() => {
+                  setIsGameActive(false);
+                  stateRef.current.isGameActive = false;
+                  publishSync("ACTION_EXECUTE");
+                }}
+                style={{
+                  background: "#1e293b",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  color: "#cbd5e1",
+                  fontSize: "0.82rem",
+                  padding: "4px 10px",
+                }}
+                title="Zurück zum Startbildschirm & Einstellungen"
+              >
+                🏠 Menü
+              </button>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <strong style={{ fontSize: "1.05rem" }}>Dalli Klick</strong>
+                <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
+                  (Bild {current + 1} von {files.length})
+                </span>
+              </div>
+            </div>
+
+            {/* In-Game Action Buttons */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={prevStep}>◀ Schritt</button>
+              <button
+                style={{ fontSize: "0.78rem", padding: "4px 10px", background: "#312e81", borderColor: "#6366f1", color: "#e0e7ff" }}
+                onClick={nextStep}
+              >
+                Schritt ▶ (Space)
+              </button>
+              <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={solveRound}>Lösen (L)</button>
+              <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={nextImage}>Nächstes Bild (N)</button>
+              <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={resetRound}>Runde reset (R)</button>
+              <button style={{ fontSize: "0.78rem", padding: "4px 8px" }} onClick={() => fileInputRef.current?.click()}>➕ Bilder</button>
+              <input ref={fileInputRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={onAddFiles} />
+            </div>
+
+            {/* Spielleiter Spicker Dropdown Button */}
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => setShowCheatPopover(!showCheatPopover)}
+                onMouseEnter={() => setShowCheatPopover(true)}
                 style={{
                   fontSize: "0.8rem",
                   padding: "4px 10px",
-                  background: "#450a0a",
-                  border: "1px solid #991b1b",
-                  color: "#fecaca",
-                  borderRadius: 8,
-                  cursor: "pointer",
+                  background: showCheatPopover ? "#312e81" : "#1e293b",
+                  borderColor: showCheatPopover ? "#818cf8" : "rgba(255,255,255,0.15)",
+                  color: "#e0e7ff",
                 }}
-                title="Punktevergabe rückgängig machen (Strg+Z)"
+                title="Zeigt die deutsche Lösung für den Spielleiter an (Taste S)"
               >
-                ↩ Rückgängig
+                🕵️‍♂️ Spicker (S)
               </button>
-            )}
-            {teams.map((t, i) => (
-              <div
-                key={t.name}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "4px 12px",
-                  background: "#1e293b",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: 10,
-                }}
-              >
-                <span style={{ fontSize: "1.05rem", fontWeight: "bold", color: "#94a3b8" }}>{t.name}</span>
-                <span
-                  key={t._lastAward}
-                  style={{
-                    fontSize: "1.6rem",
-                    fontWeight: "900",
-                    color: "#4ade80",
-                    display: "inline-block",
-                    minWidth: "2ch",
-                    textAlign: "center",
-                    animation: t._lastAward ? "scorePop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)" : "none",
-                  }}
-                >
-                  {t.score}
-                </span>
-                <button
-                  onClick={() => awardTeam(i)}
-                  style={{
-                    fontSize: "0.75rem",
-                    padding: "3px 8px",
-                    background: "#334155",
-                    border: "1px solid rgba(255,255,255,0.15)",
-                    color: "#fff",
-                  }}
-                  title={`Punkte geben (Taste ${t.name})`}
-                >
-                  + Pkt
-                </button>
-              </div>
-            ))}
-          </div>
-        </header>
 
-        {/* Interactive Game Canvas */}
-        <div style={{ position: "relative", background: "#0b0e14" }}>
-          <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+              {/* Cheat Sheet Popover */}
+              {showCheatPopover && (
+                <div
+                  onMouseLeave={() => setShowCheatPopover(false)}
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    marginTop: 8,
+                    background: "#131826",
+                    border: "1px solid rgba(99, 102, 241, 0.4)",
+                    borderRadius: 12,
+                    padding: 14,
+                    width: 280,
+                    boxShadow: "0 12px 30px rgba(0,0,0,0.6)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                    zIndex: 50,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 6 }}>
+                    <strong style={{ fontSize: "0.85rem", color: "#818cf8" }}>🕵️‍♂️ Spielleiter-Spickzettel</strong>
+                    <button
+                      onClick={() => setShowCheatPopover(false)}
+                      style={{ background: "transparent", border: "none", padding: 2, color: "#64748b", cursor: "pointer" }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Current Image Solution */}
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
+                      {currentFile && (
+                        <img src={currentFile.url} alt={currentFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: "0.72rem", color: "#4ade80", fontWeight: 700 }}>AKTUELLE LÖSUNG:</div>
+                      <strong style={{ fontSize: "0.95rem", color: "#fff", display: "block", wordBreak: "break-word" }}>
+                        {currentSolutionName || "—"}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Next Image Teaser */}
+                  {nextFile && (
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", borderTop: "1px dashed rgba(255,255,255,0.1)", paddingTop: 8 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", background: "#000", flexShrink: 0 }}>
+                        <img src={nextFile.url} alt={nextFile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: "0.68rem", color: "#94a3b8" }}>NÄCHSTES BILD:</div>
+                        <span style={{ fontSize: "0.85rem", color: "#cbd5e1", display: "block", wordBreak: "break-word" }}>
+                          {nextSolutionName || "—"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={openControllerWindow}
+                    style={{
+                      width: "100%",
+                      marginTop: 4,
+                      fontSize: "0.78rem",
+                      background: "#1e293b",
+                      borderColor: "rgba(255,255,255,0.15)",
+                    }}
+                  >
+                    🖥️ Spielleiter-Konsole öffnen
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Right Header Area: Scores & Undo */}
+            <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              {lastAward && (
+                <button
+                  onClick={undoLastAward}
+                  style={{
+                    fontSize: "0.8rem",
+                    padding: "4px 10px",
+                    background: "#450a0a",
+                    border: "1px solid #991b1b",
+                    color: "#fecaca",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                  }}
+                  title="Punktevergabe rückgängig machen (Strg+Z)"
+                >
+                  ↩ Rückgängig
+                </button>
+              )}
+              {teams.map((t, i) => (
+                <div
+                  key={t.name}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "4px 12px",
+                    background: "#1e293b",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 10,
+                  }}
+                >
+                  <span style={{ fontSize: "1.05rem", fontWeight: "bold", color: "#94a3b8" }}>{t.name}</span>
+                  <span
+                    key={t._lastAward}
+                    style={{
+                      fontSize: "1.6rem",
+                      fontWeight: "900",
+                      color: "#4ade80",
+                      display: "inline-block",
+                      minWidth: "2ch",
+                      textAlign: "center",
+                      animation: t._lastAward ? "scorePop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)" : "none",
+                    }}
+                  >
+                    {t.score}
+                  </span>
+                  <button
+                    onClick={() => awardTeam(i)}
+                    style={{
+                      fontSize: "0.75rem",
+                      padding: "3px 8px",
+                      background: "#334155",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      color: "#fff",
+                    }}
+                    title={`Punkte geben (Taste ${t.name})`}
+                  >
+                    + Pkt
+                  </button>
+                </div>
+              ))}
+            </div>
+          </header>
+
+          {/* Interactive Game Canvas */}
+          <div style={{ position: "relative", background: "#0b0e14" }}>
+            <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+          </div>
         </div>
-      </div>
-    )}
-  </>
+      )}
+    </>
   );
 }
