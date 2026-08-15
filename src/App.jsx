@@ -4,7 +4,7 @@ import { bilderList } from "virtual:bilder-list";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 
-// Helper to format image names cleanly (e.g. dalli_eiffel_1773924541774.png -> Eiffel)
+// Helper to format image names cleanly
 export function formatImageName(name) {
   if (!name) return "";
   let clean = name.replace(/\.[^/.]+$/, "");
@@ -84,15 +84,19 @@ function pointsForStep(stepIndex, stepsTotal, maxPoints = 20) {
 }
 
 const SYNC_CHANNEL = "dalliklick_sync_channel";
+const STORAGE_KEY = "dalliklick_sync_state";
 
 export default function App() {
-  const isControllerWindow = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("role") === "controller";
+  const isControllerWindow =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("role") === "controller";
 
   const canvasRef = useRef(null);
   const offscreenRef = useRef(null);
   const fileInputRef = useRef(null);
   const startScreenFileInputRef = useRef(null);
   const channelRef = useRef(null);
+  const childWindowRef = useRef(null);
 
   const defaultImagesCount = (bilderList || []).length;
 
@@ -114,6 +118,7 @@ export default function App() {
   const [showCheatPopover, setShowCheatPopover] = useState(false);
   const [copiedNotification, setCopiedNotification] = useState(false);
   const [draggedIdx, setDraggedIdx] = useState(null);
+  const [syncStatus, setSyncStatus] = useState("connected");
 
   const [teams, setTeams] = useState([
     { name: "A", score: 0 },
@@ -148,6 +153,234 @@ export default function App() {
   const currentSolutionName = currentFile ? formatImageName(currentFile.name) : "";
   const nextSolutionName = nextFile ? formatImageName(nextFile.name) : "";
 
+  // State ref to provide fresh state across bridge / listeners without stale closures
+  const stateRef = useRef({});
+  stateRef.current = {
+    current,
+    stepIndex,
+    stepsTotal,
+    teams,
+    lastAward,
+    revealMode,
+    spiralDirection,
+    wedgeSegments,
+    disturb,
+    tileN,
+    showHud,
+    isGameActive,
+    hasStartedBefore,
+    seed,
+    files,
+  };
+
+  // Helper to apply incoming state update
+  const applyRemoteState = useCallback((remoteState) => {
+    if (!remoteState) return;
+    if (typeof remoteState.current === "number") setCurrent(remoteState.current);
+    if (typeof remoteState.stepIndex === "number") setStepIndex(remoteState.stepIndex);
+    if (typeof remoteState.stepsTotal === "number") setStepsTotal(remoteState.stepsTotal);
+    if (Array.isArray(remoteState.teams)) setTeams(remoteState.teams);
+    if (remoteState.lastAward !== undefined) setLastAward(remoteState.lastAward);
+    if (remoteState.revealMode) setRevealMode(remoteState.revealMode);
+    if (remoteState.spiralDirection) setSpiralDirection(remoteState.spiralDirection);
+    if (typeof remoteState.wedgeSegments === "number") setWedgeSegments(remoteState.wedgeSegments);
+    if (typeof remoteState.disturb === "number") setDisturb(remoteState.disturb);
+    if (typeof remoteState.tileN === "number") setTileN(remoteState.tileN);
+    if (typeof remoteState.showHud === "boolean") setShowHud(remoteState.showHud);
+    if (typeof remoteState.isGameActive === "boolean") setIsGameActive(remoteState.isGameActive);
+    if (typeof remoteState.hasStartedBefore === "boolean") setHasStartedBefore(remoteState.hasStartedBefore);
+    if (typeof remoteState.seed === "number") setSeed(remoteState.seed);
+    if (Array.isArray(remoteState.files) && remoteState.files.length > 0) setFiles(remoteState.files);
+    setSyncStatus("connected");
+  }, []);
+
+  // Multi-layer broadcast function (Direct Bridge + postMessage + BroadcastChannel + localStorage)
+  const publishSync = useCallback((type = "ACTION_EXECUTE") => {
+    const currentState = stateRef.current;
+    const fullPayload = { type, state: currentState, timestamp: Date.now() };
+
+    // 1. Direct window bridge
+    try {
+      if (isControllerWindow && window.opener && window.opener.__dalliMainUpdate) {
+        window.opener.__dalliMainUpdate(currentState);
+      }
+      if (!isControllerWindow && childWindowRef.current && !childWindowRef.current.closed && childWindowRef.current.__dalliControllerUpdate) {
+        childWindowRef.current.__dalliControllerUpdate(currentState);
+      }
+    } catch (e) {}
+
+    // 2. window.postMessage with targetOrigin = "*" (works even on file:// protocol!)
+    try {
+      if (window.opener) {
+        window.opener.postMessage({ type: "DALLI_SYNC_MSG", payload: fullPayload }, "*");
+      }
+      if (childWindowRef.current && !childWindowRef.current.closed) {
+        childWindowRef.current.postMessage({ type: "DALLI_SYNC_MSG", payload: fullPayload }, "*");
+      }
+    } catch (e) {}
+
+    // 3. BroadcastChannel
+    try {
+      if (channelRef.current) {
+        channelRef.current.postMessage(fullPayload);
+      }
+    } catch (e) {}
+
+    // 4. localStorage
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentState));
+    } catch (e) {}
+  }, [isControllerWindow]);
+
+  // Set up Direct JS Bridge on window objects
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (isControllerWindow) {
+      window.__dalliControllerUpdate = (newState) => {
+        applyRemoteState(newState);
+      };
+      // Register with opener if available
+      try {
+        if (window.opener && window.opener.__dalliRegisterController) {
+          window.opener.__dalliRegisterController(window);
+        }
+      } catch (e) {}
+    } else {
+      window.__dalliMainUpdate = (newState) => {
+        applyRemoteState(newState);
+      };
+      window.__dalliRegisterController = (controllerWin) => {
+        childWindowRef.current = controllerWin;
+        try {
+          if (controllerWin.__dalliControllerUpdate) {
+            controllerWin.__dalliControllerUpdate(stateRef.current);
+          }
+        } catch (e) {}
+      };
+    }
+  }, [isControllerWindow, applyRemoteState]);
+
+  // Initialize sync channels, postMessage & storage listeners
+  useEffect(() => {
+    // 1. Initial State grab for controller
+    if (isControllerWindow) {
+      try {
+        if (window.opener && window.opener.__dalliMainGetState) {
+          const s = window.opener.__dalliMainGetState();
+          if (s) applyRemoteState(s);
+        }
+      } catch (e) {}
+
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          applyRemoteState(parsed);
+        }
+      } catch (e) {}
+    } else {
+      window.__dalliMainGetState = () => stateRef.current;
+    }
+
+    // 2. Set up BroadcastChannel
+    let ch = null;
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      try {
+        ch = new BroadcastChannel(SYNC_CHANNEL);
+        channelRef.current = ch;
+
+        ch.onmessage = (event) => {
+          const data = event.data || {};
+          if (data.type === "REQUEST_STATE") {
+            if (!isControllerWindow) {
+              ch.postMessage({ type: "STATE_SYNC", state: stateRef.current });
+            }
+          } else if (data.state) {
+            applyRemoteState(data.state);
+          }
+        };
+
+        if (isControllerWindow) {
+          ch.postMessage({ type: "REQUEST_STATE" });
+        }
+      } catch (e) {}
+    }
+
+    // 3. Set up postMessage listener (Crucial for file:// protocol)
+    const onWindowMessage = (e) => {
+      if (e.data && e.data.type === "DALLI_SYNC_MSG" && e.data.payload) {
+        if (e.data.payload.state) {
+          applyRemoteState(e.data.payload.state);
+        }
+      }
+    };
+    window.addEventListener("message", onWindowMessage);
+
+    // 4. Set up localStorage storage event listener
+    const onStorage = (e) => {
+      if (e.key === STORAGE_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          applyRemoteState(parsed);
+        } catch (err) {}
+      }
+    };
+    window.addEventListener("storage", onStorage);
+
+    // 5. Periodic ping for Controller window to ensure absolute sync
+    let interval = null;
+    if (isControllerWindow) {
+      interval = setInterval(() => {
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage({ type: "DALLI_SYNC_PING" }, "*");
+            if (window.opener.__dalliMainGetState) {
+              applyRemoteState(window.opener.__dalliMainGetState());
+            }
+          } else if (ch) {
+            ch.postMessage({ type: "REQUEST_STATE" });
+          }
+        } catch (e) {}
+      }, 1000);
+    }
+
+    return () => {
+      if (ch) ch.close();
+      window.removeEventListener("message", onWindowMessage);
+      window.removeEventListener("storage", onStorage);
+      if (interval) clearInterval(interval);
+    };
+  }, [isControllerWindow, applyRemoteState]);
+
+  // Sync state changes from main window to storage & channels
+  useEffect(() => {
+    if (!isControllerWindow) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateRef.current));
+      } catch (e) {}
+      publishSync("STATE_UPDATE");
+    }
+  }, [
+    current,
+    stepIndex,
+    stepsTotal,
+    teams,
+    lastAward,
+    revealMode,
+    spiralDirection,
+    wedgeSegments,
+    disturb,
+    tileN,
+    showHud,
+    isGameActive,
+    hasStartedBefore,
+    seed,
+    files,
+    isControllerWindow,
+    publishSync,
+  ]);
+
   // Reveal orders
   const revealOrder = useMemo(() => {
     if (revealMode === "SPIRAL_GRID") {
@@ -160,136 +393,6 @@ export default function App() {
     () => makeSegmentOrder(wedgeSegments, seed),
     [wedgeSegments, seed]
   );
-
-  // BroadcastChannel Sync Setup
-  useEffect(() => {
-    if (typeof window === "undefined" || !("BroadcastChannel" in window)) return;
-    const ch = new BroadcastChannel(SYNC_CHANNEL);
-    channelRef.current = ch;
-
-    ch.onmessage = (event) => {
-      const { type, payload } = event.data || {};
-      if (!type) return;
-
-      if (type === "REQUEST_STATE") {
-        if (!isControllerWindow) {
-          ch.postMessage({
-            type: "STATE_SYNC",
-            payload: {
-              current,
-              stepIndex,
-              stepsTotal,
-              teams,
-              lastAward,
-              revealMode,
-              spiralDirection,
-              wedgeSegments,
-              disturb,
-              tileN,
-              showHud,
-              isGameActive,
-              hasStartedBefore,
-              seed,
-              files: files.map((f) => ({ name: f.name, url: f.url, isDefault: f.isDefault })),
-            },
-          });
-        }
-      } else if (type === "STATE_SYNC") {
-        if (payload) {
-          if (payload.current !== undefined) setCurrent(payload.current);
-          if (payload.stepIndex !== undefined) setStepIndex(payload.stepIndex);
-          if (payload.stepsTotal !== undefined) setStepsTotal(payload.stepsTotal);
-          if (payload.teams !== undefined) setTeams(payload.teams);
-          if (payload.lastAward !== undefined) setLastAward(payload.lastAward);
-          if (payload.revealMode !== undefined) setRevealMode(payload.revealMode);
-          if (payload.spiralDirection !== undefined) setSpiralDirection(payload.spiralDirection);
-          if (payload.wedgeSegments !== undefined) setWedgeSegments(payload.wedgeSegments);
-          if (payload.disturb !== undefined) setDisturb(payload.disturb);
-          if (payload.tileN !== undefined) setTileN(payload.tileN);
-          if (payload.showHud !== undefined) setShowHud(payload.showHud);
-          if (payload.isGameActive !== undefined) setIsGameActive(payload.isGameActive);
-          if (payload.hasStartedBefore !== undefined) setHasStartedBefore(payload.hasStartedBefore);
-          if (payload.seed !== undefined) setSeed(payload.seed);
-          if (payload.files && payload.files.length) setFiles(payload.files);
-        }
-      } else if (type === "ACTION_NEXT_STEP") {
-        setStepIndex((s) => clamp(s + 1, 0, payload?.stepsTotal ?? stepsTotal));
-      } else if (type === "ACTION_PREV_STEP") {
-        setStepIndex((s) => clamp(s - 1, 0, payload?.stepsTotal ?? stepsTotal));
-      } else if (type === "ACTION_SOLVE") {
-        setStepIndex(payload?.stepsTotal ?? stepsTotal);
-      } else if (type === "ACTION_NEXT_IMAGE") {
-        setCurrent((c) => (c + 1) % (payload?.filesLength || files.length || 1));
-        setStepIndex(0);
-        setSeed((x) => x + 1);
-        setLastAward(null);
-      } else if (type === "ACTION_RESET_ROUND") {
-        setStepIndex(0);
-        setSeed((x) => x + 1);
-        setLastAward(null);
-      } else if (type === "ACTION_SET_CURRENT") {
-        if (payload?.index !== undefined) {
-          setCurrent(payload.index);
-          setStepIndex(0);
-          setSeed((x) => x + 1);
-          setLastAward(null);
-          setHasStartedBefore(true);
-        }
-      } else if (type === "ACTION_AWARD_TEAM") {
-        const { teamIdx, pts, stepIndexBefore } = payload || {};
-        if (teamIdx !== undefined) {
-          setLastAward({ teamIdx, pts, stepIndexBefore });
-          setTeams((t) =>
-            t.map((x, i) =>
-              i === teamIdx
-                ? { ...x, score: x.score + pts, _lastAward: Date.now() }
-                : x
-            )
-          );
-          setStepIndex(payload.stepsTotal ?? stepsTotal);
-        }
-      } else if (type === "ACTION_UNDO_AWARD") {
-        if (payload?.lastAward) {
-          const la = payload.lastAward;
-          setTeams((t) =>
-            t.map((x, i) =>
-              i === la.teamIdx
-                ? { ...x, score: x.score - la.pts, _lastAward: Date.now() }
-                : x
-            )
-          );
-          setStepIndex(la.stepIndexBefore);
-          setLastAward(null);
-        }
-      } else if (type === "ACTION_SET_GAME_ACTIVE") {
-        if (payload?.isGameActive !== undefined) {
-          setIsGameActive(payload.isGameActive);
-          if (payload.isGameActive) setHasStartedBefore(true);
-        }
-      } else if (type === "ACTION_TOGGLE_FULLSCREEN") {
-        if (!isControllerWindow) {
-          const el = document.documentElement;
-          if (!document.fullscreenElement) el.requestFullscreen?.();
-          else document.exitFullscreen?.();
-        }
-      }
-    };
-
-    if (isControllerWindow) {
-      ch.postMessage({ type: "REQUEST_STATE" });
-    }
-
-    return () => {
-      ch.close();
-    };
-  }, [isControllerWindow, stepsTotal, files.length]);
-
-  // Sync state broadcast on updates from main window
-  const broadcastAction = useCallback((type, payload = {}) => {
-    if (channelRef.current) {
-      channelRef.current.postMessage({ type, payload });
-    }
-  }, []);
 
   // load image when current changes
   useEffect(() => {
@@ -314,82 +417,112 @@ export default function App() {
     };
   }, []);
 
-  const nextStep = () => {
-    setStepIndex((s) => clamp(s + 1, 0, stepsTotal));
-    broadcastAction("ACTION_NEXT_STEP", { stepsTotal });
-  };
+  // Action Handlers (Mutate local state + publish immediate sync)
+  const nextStep = useCallback(() => {
+    setStepIndex((prev) => {
+      const nextVal = clamp(prev + 1, 0, stepsTotal);
+      stateRef.current.stepIndex = nextVal;
+      publishSync("ACTION_NEXT_STEP");
+      return nextVal;
+    });
+  }, [stepsTotal, publishSync]);
 
-  const prevStep = () => {
-    setStepIndex((s) => clamp(s - 1, 0, stepsTotal));
-    broadcastAction("ACTION_PREV_STEP", { stepsTotal });
-  };
+  const prevStep = useCallback(() => {
+    setStepIndex((prev) => {
+      const nextVal = clamp(prev - 1, 0, stepsTotal);
+      stateRef.current.stepIndex = nextVal;
+      publishSync("ACTION_PREV_STEP");
+      return nextVal;
+    });
+  }, [stepsTotal, publishSync]);
 
-  const solveRound = () => {
+  const solveRound = useCallback(() => {
     setStepIndex(stepsTotal);
-    broadcastAction("ACTION_SOLVE", { stepsTotal });
-  };
+    stateRef.current.stepIndex = stepsTotal;
+    publishSync("ACTION_SOLVE");
+  }, [stepsTotal, publishSync]);
 
-  const resetRound = () => {
+  const resetRound = useCallback(() => {
     setStepIndex(0);
     setSeed((x) => x + 1);
     setLastAward(null);
-    broadcastAction("ACTION_RESET_ROUND");
-  };
+    stateRef.current.stepIndex = 0;
+    stateRef.current.seed += 1;
+    stateRef.current.lastAward = null;
+    publishSync("ACTION_RESET_ROUND");
+  }, [publishSync]);
 
-  const nextImage = () => {
+  const nextImage = useCallback(() => {
     if (!files.length) return;
-    setCurrent((c) => (c + 1) % files.length);
-    resetRound();
-    broadcastAction("ACTION_NEXT_IMAGE", { filesLength: files.length });
-  };
+    const nextIdx = (current + 1) % files.length;
+    setCurrent(nextIdx);
+    setStepIndex(0);
+    setSeed((x) => x + 1);
+    setLastAward(null);
 
-  const selectImage = (idx) => {
+    stateRef.current.current = nextIdx;
+    stateRef.current.stepIndex = 0;
+    stateRef.current.seed += 1;
+    stateRef.current.lastAward = null;
+    publishSync("ACTION_NEXT_IMAGE");
+  }, [current, files.length, publishSync]);
+
+  const selectImage = useCallback((idx) => {
     setCurrent(idx);
     setStepIndex(0);
     setSeed((x) => x + 1);
     setLastAward(null);
     setHasStartedBefore(true);
-    broadcastAction("ACTION_SET_CURRENT", { index: idx });
-  };
 
-  const awardTeam = (teamIdx) => {
+    stateRef.current.current = idx;
+    stateRef.current.stepIndex = 0;
+    stateRef.current.seed += 1;
+    stateRef.current.lastAward = null;
+    stateRef.current.hasStartedBefore = true;
+    publishSync("ACTION_SET_IMAGE");
+  }, [publishSync]);
+
+  const awardTeam = useCallback((teamIdx) => {
     const pts = pointsForStep(stepIndex, stepsTotal, 20);
     const stepBefore = stepIndex;
-    setLastAward({ teamIdx, pts, stepIndexBefore: stepBefore });
-    setTeams((t) =>
-      t.map((x, i) =>
-        i === teamIdx
-          ? { ...x, score: x.score + pts, _lastAward: Date.now() }
-          : x
-      )
-    );
-    setStepIndex(stepsTotal);
-    broadcastAction("ACTION_AWARD_TEAM", { teamIdx, pts, stepIndexBefore: stepBefore, stepsTotal });
-  };
+    const awardObj = { teamIdx, pts, stepIndexBefore: stepBefore };
+    setLastAward(awardObj);
 
-  const undoLastAward = () => {
+    const updatedTeams = teams.map((x, i) =>
+      i === teamIdx ? { ...x, score: x.score + pts, _lastAward: Date.now() } : x
+    );
+    setTeams(updatedTeams);
+    setStepIndex(stepsTotal);
+
+    stateRef.current.lastAward = awardObj;
+    stateRef.current.teams = updatedTeams;
+    stateRef.current.stepIndex = stepsTotal;
+    publishSync("ACTION_AWARD_TEAM");
+  }, [stepIndex, stepsTotal, teams, publishSync]);
+
+  const undoLastAward = useCallback(() => {
     if (!lastAward) return;
     const la = lastAward;
-    setTeams((t) =>
-      t.map((x, i) =>
-        i === la.teamIdx
-          ? { ...x, score: x.score - la.pts, _lastAward: Date.now() }
-          : x
-      )
+    const updatedTeams = teams.map((x, i) =>
+      i === la.teamIdx ? { ...x, score: x.score - la.pts, _lastAward: Date.now() } : x
     );
+    setTeams(updatedTeams);
     setStepIndex(la.stepIndexBefore);
     setLastAward(null);
-    broadcastAction("ACTION_UNDO_AWARD", { lastAward: la });
-  };
 
-  const toggleFullscreen = () => {
-    broadcastAction("ACTION_TOGGLE_FULLSCREEN");
+    stateRef.current.teams = updatedTeams;
+    stateRef.current.stepIndex = la.stepIndexBefore;
+    stateRef.current.lastAward = null;
+    publishSync("ACTION_UNDO_AWARD");
+  }, [lastAward, teams, publishSync]);
+
+  const toggleFullscreen = useCallback(() => {
     const el = document.documentElement;
     if (!document.fullscreenElement) el.requestFullscreen?.();
     else document.exitFullscreen?.();
-  };
+  }, []);
 
-  // keyboard controls
+  // Keyboard controls
   useEffect(() => {
     const onKey = (e) => {
       if (!isGameActive && !isControllerWindow) return;
@@ -416,13 +549,24 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [teams.length, stepIndex, stepsTotal, files.length, isGameActive, isControllerWindow, lastAward]);
+  }, [
+    isGameActive,
+    isControllerWindow,
+    nextStep,
+    nextImage,
+    resetRound,
+    toggleFullscreen,
+    solveRound,
+    undoLastAward,
+    awardTeam,
+    teams.length,
+  ]);
 
   useEffect(() => {
     lastStepRef.current = { index: stepIndex, time: performance.now() };
   }, [stepIndex]);
 
-  // Main Canvas Rendering
+  // Main Canvas Rendering Loop (Only in Presentation/Main window)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || isControllerWindow) return;
@@ -665,6 +809,12 @@ export default function App() {
     setStepIndex(0);
     setHasStartedBefore(false);
     e.target.value = null;
+
+    stateRef.current.files = mapped;
+    stateRef.current.current = 0;
+    stateRef.current.stepIndex = 0;
+    stateRef.current.hasStartedBefore = false;
+    publishSync("ACTION_EXECUTE");
   };
 
   const onAddFiles = (e) => {
@@ -675,8 +825,12 @@ export default function App() {
       url: URL.createObjectURL(f),
       isDefault: false,
     }));
-    setFiles((prev) => [...prev, ...mapped]);
+    const updated = [...files, ...mapped];
+    setFiles(updated);
     e.target.value = null;
+
+    stateRef.current.files = updated;
+    publishSync("ACTION_EXECUTE");
   };
 
   const resetToDefaultImages = () => {
@@ -690,33 +844,59 @@ export default function App() {
     setSeed((x) => x + 1);
     setStepIndex(0);
     setHasStartedBefore(false);
+
+    stateRef.current.files = defaults;
+    stateRef.current.current = 0;
+    stateRef.current.stepIndex = 0;
+    stateRef.current.hasStartedBefore = false;
+    publishSync("ACTION_EXECUTE");
   };
 
   const shuffleFiles = () => {
-    setFiles((prev) => [...prev].sort(() => Math.random() - 0.5));
+    const shuffled = [...files].sort(() => Math.random() - 0.5);
+    setFiles(shuffled);
     setSeed((s) => s + 1);
     setCurrent(0);
     setStepIndex(0);
     setHasStartedBefore(false);
+
+    stateRef.current.files = shuffled;
+    stateRef.current.current = 0;
+    stateRef.current.stepIndex = 0;
+    stateRef.current.hasStartedBefore = false;
+    publishSync("ACTION_EXECUTE");
   };
 
   const addTeam = () => {
     if (teams.length >= 8) return;
     const nextLetter = String.fromCharCode(65 + teams.length);
-    setTeams((t) => [...t, { name: nextLetter, score: 0 }]);
+    const updated = [...teams, { name: nextLetter, score: 0 }];
+    setTeams(updated);
+    stateRef.current.teams = updated;
+    publishSync("ACTION_EXECUTE");
   };
 
   const removeTeam = (idx) => {
     if (teams.length <= 1) return;
-    setTeams((t) => t.filter((_, i) => i !== idx));
+    const updated = teams.filter((_, i) => i !== idx);
+    setTeams(updated);
+    stateRef.current.teams = updated;
+    publishSync("ACTION_EXECUTE");
   };
 
-  const resetScores = () => setTeams((t) => t.map((x) => ({ ...x, score: 0 })));
+  const resetScores = () => {
+    const updated = teams.map((x) => ({ ...x, score: 0 }));
+    setTeams(updated);
+    stateRef.current.teams = updated;
+    publishSync("ACTION_EXECUTE");
+  };
 
   const resumeGame = () => {
     setIsGameActive(true);
     setHasStartedBefore(true);
-    broadcastAction("ACTION_SET_GAME_ACTIVE", { isGameActive: true });
+    stateRef.current.isGameActive = true;
+    stateRef.current.hasStartedBefore = true;
+    publishSync("ACTION_EXECUTE");
   };
 
   const startNewGameFromBeginning = () => {
@@ -726,13 +906,25 @@ export default function App() {
     setLastAward(null);
     setIsGameActive(true);
     setHasStartedBefore(true);
-    broadcastAction("ACTION_SET_GAME_ACTIVE", { isGameActive: true });
-    broadcastAction("ACTION_SET_CURRENT", { index: 0 });
+
+    stateRef.current.current = 0;
+    stateRef.current.stepIndex = 0;
+    stateRef.current.seed += 1;
+    stateRef.current.lastAward = null;
+    stateRef.current.isGameActive = true;
+    stateRef.current.hasStartedBefore = true;
+    publishSync("ACTION_EXECUTE");
   };
 
   const openControllerWindow = () => {
-    const url = window.location.origin + window.location.pathname + "?role=controller";
-    window.open(url, "dalli_controller_window", "width=1040,height=760,menubar=no,toolbar=no,location=no,status=no");
+    const base = window.location.href.split("?")[0].split("#")[0];
+    const url = `${base}?role=controller`;
+    const win = window.open(
+      url,
+      "dalli_controller_window",
+      "width=1060,height=780,menubar=no,toolbar=no,location=no,status=no"
+    );
+    childWindowRef.current = win;
   };
 
   const copySolutionList = () => {
@@ -788,16 +980,35 @@ export default function App() {
             <span style={{ fontSize: "1.5rem" }}>🖥️</span>
             <div>
               <strong style={{ fontSize: "1.1rem", color: "#818cf8" }}>Spielleiter-Konsole</strong>
-              <div style={{ fontSize: "0.8rem", color: "#4ade80" }}>🟢 Verbunden mit Beamer/Hauptfenster</div>
+              <div style={{ fontSize: "0.8rem", color: "#4ade80" }}>
+                🟢 Live synchronisiert mit Hauptfenster
+              </div>
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button onClick={toggleFullscreen} style={{ fontSize: "0.85rem", background: "#1e293b" }}>
-              🪟 Beamer Vollbild (F)
+            <button
+              onClick={() => {
+                if (window.opener) {
+                  try {
+                    window.opener.focus();
+                  } catch (e) {}
+                }
+              }}
+              style={{ fontSize: "0.85rem", background: "#1e293b" }}
+              title="Zum Beamer/Hauptfenster wechseln"
+            >
+              📺 Zum Hauptfenster
             </button>
             <button
-              onClick={() => broadcastAction("REQUEST_STATE")}
+              onClick={() => {
+                if (window.opener && window.opener.__dalliMainGetState) {
+                  applyRemoteState(window.opener.__dalliMainGetState());
+                }
+                if (channelRef.current) {
+                  channelRef.current.postMessage({ type: "REQUEST_STATE" });
+                }
+              }}
               style={{ fontSize: "0.85rem", background: "#1e293b" }}
               title="Aktualisiert die Synchronisation"
             >
@@ -1512,7 +1723,11 @@ export default function App() {
               >
                 {/* Mode 1: Random Grid */}
                 <div
-                  onClick={() => setRevealMode("GRID_RANDOM")}
+                  onClick={() => {
+                    setRevealMode("GRID_RANDOM");
+                    stateRef.current.revealMode = "GRID_RANDOM";
+                    publishSync("ACTION_EXECUTE");
+                  }}
                   style={{
                     padding: 16,
                     borderRadius: 12,
@@ -1542,7 +1757,11 @@ export default function App() {
 
                 {/* Mode 2: Radial Wedges */}
                 <div
-                  onClick={() => setRevealMode("WEDGES_RADIAL")}
+                  onClick={() => {
+                    setRevealMode("WEDGES_RADIAL");
+                    stateRef.current.revealMode = "WEDGES_RADIAL";
+                    publishSync("ACTION_EXECUTE");
+                  }}
                   style={{
                     padding: 16,
                     borderRadius: 12,
@@ -1572,7 +1791,11 @@ export default function App() {
 
                 {/* Mode 3: Spiral */}
                 <div
-                  onClick={() => setRevealMode("SPIRAL_GRID")}
+                  onClick={() => {
+                    setRevealMode("SPIRAL_GRID");
+                    stateRef.current.revealMode = "SPIRAL_GRID";
+                    publishSync("ACTION_EXECUTE");
+                  }}
                   style={{
                     padding: 16,
                     borderRadius: 12,
@@ -1607,7 +1830,11 @@ export default function App() {
                   <span style={{ fontSize: "0.9rem", color: "#cbd5e1" }}>Spiralrichtung:</span>
                   <select
                     value={spiralDirection}
-                    onChange={(e) => setSpiralDirection(e.target.value)}
+                    onChange={(e) => {
+                      setSpiralDirection(e.target.value);
+                      stateRef.current.spiralDirection = e.target.value;
+                      publishSync("ACTION_EXECUTE");
+                    }}
                   >
                     <option value="outside-in">Von Außen nach Innen</option>
                     <option value="inside-out">Von Innen nach Außen</option>
@@ -1640,7 +1867,12 @@ export default function App() {
                     min="0"
                     max="10"
                     value={disturb}
-                    onChange={(e) => setDisturb(parseInt(e.target.value, 10))}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setDisturb(val);
+                      stateRef.current.disturb = val;
+                      publishSync("ACTION_EXECUTE");
+                    }}
                     style={{ width: "100%" }}
                   />
                   <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: 4 }}>
@@ -1666,9 +1898,12 @@ export default function App() {
                       min="5"
                       max="80"
                       value={stepsTotal}
-                      onChange={(e) =>
-                        setStepsTotal(clamp(parseInt(e.target.value || "20", 10), 5, 80))
-                      }
+                      onChange={(e) => {
+                        const val = clamp(parseInt(e.target.value || "20", 10), 5, 80);
+                        setStepsTotal(val);
+                        stateRef.current.stepsTotal = val;
+                        publishSync("ACTION_EXECUTE");
+                      }}
                       style={{ width: 80 }}
                     />
                     <div style={{ display: "flex", gap: 4 }}>
@@ -1676,7 +1911,11 @@ export default function App() {
                         <button
                           key={val}
                           type="button"
-                          onClick={() => setStepsTotal(val)}
+                          onClick={() => {
+                            setStepsTotal(val);
+                            stateRef.current.stepsTotal = val;
+                            publishSync("ACTION_EXECUTE");
+                          }}
                           style={{
                             padding: "4px 8px",
                             fontSize: "0.8rem",
@@ -1707,9 +1946,12 @@ export default function App() {
                       min="6"
                       max="40"
                       value={tileN}
-                      onChange={(e) =>
-                        setTileN(clamp(parseInt(e.target.value || "18", 10), 6, 40))
-                      }
+                      onChange={(e) => {
+                        const val = clamp(parseInt(e.target.value || "18", 10), 6, 40);
+                        setTileN(val);
+                        stateRef.current.tileN = val;
+                        publishSync("ACTION_EXECUTE");
+                      }}
                       style={{ width: 80 }}
                     />
                     <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: 4 }}>
@@ -1729,9 +1971,12 @@ export default function App() {
                       min="6"
                       max="36"
                       value={wedgeSegments}
-                      onChange={(e) =>
-                        setWedgeSegments(clamp(parseInt(e.target.value || "18", 10), 6, 36))
-                      }
+                      onChange={(e) => {
+                        const val = clamp(parseInt(e.target.value || "18", 10), 6, 36);
+                        setWedgeSegments(val);
+                        stateRef.current.wedgeSegments = val;
+                        publishSync("ACTION_EXECUTE");
+                      }}
                       style={{ width: 80 }}
                     />
                     <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: 4 }}>
@@ -1746,7 +1991,11 @@ export default function App() {
                     id="hud-checkbox"
                     type="checkbox"
                     checked={showHud}
-                    onChange={(e) => setShowHud(e.target.checked)}
+                    onChange={(e) => {
+                      setShowHud(e.target.checked);
+                      stateRef.current.showHud = e.target.checked;
+                      publishSync("ACTION_EXECUTE");
+                    }}
                     style={{ width: 18, height: 18, accentColor: "#6366f1", cursor: "pointer" }}
                   />
                   <label htmlFor="hud-checkbox" style={{ fontSize: "0.9rem", cursor: "pointer" }}>
@@ -2067,6 +2316,8 @@ export default function App() {
                             const arr = [...fs];
                             const item = arr.splice(draggedIdx, 1)[0];
                             arr.splice(i, 0, item);
+                            stateRef.current.files = arr;
+                            publishSync("ACTION_EXECUTE");
                             return arr;
                           });
                           setDraggedIdx(i);
@@ -2115,7 +2366,10 @@ export default function App() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setFiles((fs) => fs.filter((_, idx) => idx !== i));
+                            const updated = files.filter((_, idx) => idx !== i);
+                            setFiles(updated);
+                            stateRef.current.files = updated;
+                            publishSync("ACTION_EXECUTE");
                           }}
                           style={{
                             position: "absolute",
@@ -2375,7 +2629,8 @@ export default function App() {
           <button
             onClick={() => {
               setIsGameActive(false);
-              broadcastAction("ACTION_SET_GAME_ACTIVE", { isGameActive: false });
+              stateRef.current.isGameActive = false;
+              publishSync("ACTION_EXECUTE");
             }}
             style={{
               background: "#1e293b",
